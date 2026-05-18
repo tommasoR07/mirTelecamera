@@ -28,7 +28,7 @@ DEFAULT_SETTINGS = {
     'follow_left_mission': 'follow_sinistra',
     'follow_right_mission': 'follow_destra',
     'follow_stop_mission': 'follow_stop',
-    'follow_min_interval_seconds': '1.4',
+    'follow_min_interval_seconds': '0.45',
 }
 
 
@@ -75,7 +75,7 @@ def init_db() -> None:
         _ensure_column(conn, 'settings', 'follow_left_mission', 'TEXT', "'follow_sinistra'")
         _ensure_column(conn, 'settings', 'follow_right_mission', 'TEXT', "'follow_destra'")
         _ensure_column(conn, 'settings', 'follow_stop_mission', 'TEXT', "'follow_stop'")
-        _ensure_column(conn, 'settings', 'follow_min_interval_seconds', 'TEXT', "'1.4'")
+        _ensure_column(conn, 'settings', 'follow_min_interval_seconds', 'TEXT', "'0.45'")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workflows (
@@ -109,6 +109,8 @@ def get_settings() -> dict:
             data.setdefault(key, value)
         data['camera_stream_url'] = data.get('camera_stream_url') or DEFAULT_SETTINGS['camera_stream_url']
         data['camera_snapshot_url'] = data.get('camera_snapshot_url') or DEFAULT_SETTINGS['camera_snapshot_url']
+        if str(data.get('follow_min_interval_seconds') or '').strip() in {'', '1.4', '2.0'}:
+            data['follow_min_interval_seconds'] = DEFAULT_SETTINGS['follow_min_interval_seconds']
         return data
 
 
@@ -132,7 +134,7 @@ def save_settings(
     follow_left_mission: str = 'follow_sinistra',
     follow_right_mission: str = 'follow_destra',
     follow_stop_mission: str = 'follow_stop',
-    follow_min_interval_seconds: str = '2.0',
+    follow_min_interval_seconds: str = '0.45',
 ) -> None:
     with get_conn() as conn:
         conn.execute(

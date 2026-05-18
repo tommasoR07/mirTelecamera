@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import quote
 from typing import Any
 import asyncio
+import threading
 import time
 
 import httpx
@@ -22,6 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI(title='MiR Tracking System')
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'static')), name='static')
 templates = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
+_SNAPSHOT_HTTP_CLIENT: httpx.AsyncClient | None = None
 
 
 def redirect(path: str) -> RedirectResponse:
@@ -46,6 +48,15 @@ def render(request: Request, template: str, **context):
 @app.on_event('startup')
 def on_startup() -> None:
     db.init_db()
+
+
+@app.on_event('shutdown')
+async def on_shutdown() -> None:
+    global _SNAPSHOT_HTTP_CLIENT
+    _STREAM_FRAME_CACHE.stop()
+    if _SNAPSHOT_HTTP_CLIENT is not None:
+        await _SNAPSHOT_HTTP_CLIENT.aclose()
+        _SNAPSHOT_HTTP_CLIENT = None
 
 
 @app.get('/', response_class=HTMLResponse)
@@ -88,7 +99,7 @@ def save_settings(
     follow_left_mission: str = Form('follow_sinistra'),
     follow_right_mission: str = Form('follow_destra'),
     follow_stop_mission: str = Form('follow_stop'),
-    follow_min_interval_seconds: str = Form('1.4'),
+    follow_min_interval_seconds: str = Form('0.45'),
 ):
     db.save_settings(
         host,
@@ -325,7 +336,7 @@ def _decide_follow_mission(command: dict[str, Any], desired_size_ratio: float) -
     if offset is None or size_ratio is None:
         # Non fermare al primo frame perso: lo snapshot può saltare per un istante.
         last_seen = float(_FOLLOW_STATE.get('last_seen_ts') or 0.0)
-        if now - last_seen < 1.4:
+        if now - last_seen < 0.7:
             return 'none'
         return 'stop'
 
@@ -336,8 +347,8 @@ def _decide_follow_mission(command: dict[str, Any], desired_size_ratio: float) -
 
     # Isteresi laterale: soglia alta per iniziare, soglia bassa per smettere.
     previous = _FOLLOW_STATE.get('sent_action')
-    lateral_enter = 0.32
-    lateral_exit = 0.16
+    lateral_enter = 0.24
+    lateral_exit = 0.12
 
     if previous == 'sinistra' and offset < -lateral_exit:
         return 'sinistra'
@@ -350,12 +361,12 @@ def _decide_follow_mission(command: dict[str, Any], desired_size_ratio: float) -
         return 'sinistra'
 
     # Avanza solo se il tag è abbastanza centrato: evita avanti+curve a scatti.
-    too_far_margin = 0.045
-    if abs_offset < 0.24 and size_ratio < max(0.05, desired_size_ratio - too_far_margin):
+    too_far_margin = 0.035
+    if abs_offset < 0.30 and size_ratio < max(0.05, desired_size_ratio - too_far_margin):
         return 'avanti'
 
     # Se è quasi centrato e alla distanza giusta, stop morbido.
-    if abs_offset < 0.20 and size_ratio >= desired_size_ratio - too_far_margin:
+    if abs_offset < 0.18 and size_ratio >= desired_size_ratio - too_far_margin:
         return 'stop'
 
     # Zona morta: non cambiare comando.
@@ -377,13 +388,14 @@ async def _run_follow_micro_mission(action: str, settings: dict[str, Any]) -> di
     mission_name_or_guid = str(settings.get(mission_setting, '')).strip()
     now = time.time()
     try:
-        interval = float(settings.get('follow_min_interval_seconds') or 1.4)
+        interval = float(settings.get('follow_min_interval_seconds') or 0.45)
     except Exception:
-        interval = 1.4
+        interval = 0.45
+    interval = max(0.25, min(interval, 0.8))
 
     # Debounce: la stessa decisione deve comparire per più frame prima di inviare.
     # Rende il robot più fluido perché evita sinistra/destra/stop dovuti a jitter.
-    stable_required = 2 if action in {'sinistra', 'destra'} else 1
+    stable_required = 1
     if _FOLLOW_STATE.get('pending_action') == action:
         _FOLLOW_STATE['pending_count'] = int(_FOLLOW_STATE.get('pending_count') or 0) + 1
     else:
@@ -428,32 +440,139 @@ def _load_cv2():
 
 def _is_video_stream_url(url: str) -> bool:
     clean = (url or '').strip().lower()
-    print(clean)
-    return clean.startswith(('rtsp://', 'rtmp://', "http://"))
+    path = clean.split('?', 1)[0].rstrip('/')
+    return (
+        clean.startswith(('rtsp://', 'rtmp://'))
+        or path.endswith(('/video', '/video_feed', '/stream', '/mjpeg', '/mjpg'))
+        or 'action=stream' in clean
+    )
+
+
+class _StreamFrameCache:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.url = ''
+        self.capture = None
+        self.thread: threading.Thread | None = None
+        self.running = False
+        self.jpeg: bytes | None = None
+        self.last_frame_ts = 0.0
+        self.last_error = ''
+
+    def get_jpeg(self, url: str, wait_seconds: float = 2.0) -> bytes:
+        url = (url or '').strip()
+        if not url:
+            raise RuntimeError('Stream URL camera non configurato.')
+        self._ensure_running(url)
+        deadline = time.time() + wait_seconds
+        while time.time() < deadline:
+            with self.lock:
+                if self.url == url and self.jpeg:
+                    return self.jpeg
+                last_error = self.last_error
+            time.sleep(0.03)
+        raise RuntimeError(last_error or f'Nessun frame disponibile dallo stream: {url}')
+
+    def _ensure_running(self, url: str) -> None:
+        with self.lock:
+            stale = bool(self.running and self.url == url and self.last_frame_ts and time.time() - self.last_frame_ts > 3.0)
+            failed = bool(self.running and self.url == url and not self.jpeg and self.last_error)
+            if self.running and self.url == url and not stale and not failed:
+                return
+            self._stop_locked()
+            self.url = url
+            self.jpeg = None
+            self.last_error = ''
+            self.last_frame_ts = 0.0
+            self.running = True
+            self.thread = threading.Thread(target=self._loop, args=(url,), daemon=True)
+            self.thread.start()
+
+    def _stop_locked(self) -> None:
+        self.running = False
+        capture = self.capture
+        self.capture = None
+        if capture is not None:
+            try:
+                capture.release()
+            except Exception:
+                pass
+
+    def stop(self) -> None:
+        with self.lock:
+            self._stop_locked()
+
+    def _loop(self, url: str) -> None:
+        cv2, _ = _load_cv2()
+        cap = cv2.VideoCapture(url)
+        with self.lock:
+            if self.url == url and self.running:
+                self.capture = cap
+        try:
+            if hasattr(cv2, 'CAP_PROP_BUFFERSIZE'):
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            if not cap.isOpened():
+                with self.lock:
+                    self.last_error = f'Stream video non raggiungibile: {url}'
+                return
+            while True:
+                with self.lock:
+                    if not self.running or self.url != url:
+                        return
+                ok, frame = cap.read()
+                if not ok or frame is None:
+                    with self.lock:
+                        self.last_error = f'Impossibile leggere un frame dallo stream: {url}'
+                    time.sleep(0.08)
+                    continue
+                encoded, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                if encoded:
+                    with self.lock:
+                        if self.running and self.url == url:
+                            self.jpeg = buffer.tobytes()
+                            self.last_frame_ts = time.time()
+                            self.last_error = ''
+        finally:
+            with self.lock:
+                if self.capture is cap:
+                    self.capture = None
+                if self.url == url:
+                    self.running = False
+            cap.release()
+
+
+_STREAM_FRAME_CACHE = _StreamFrameCache()
+_APRILTAG_DETECTORS: dict[str, Any] = {}
+
+
+def _get_snapshot_http_client() -> httpx.AsyncClient:
+    global _SNAPSHOT_HTTP_CLIENT
+    if _SNAPSHOT_HTTP_CLIENT is None:
+        _SNAPSHOT_HTTP_CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(2.5, connect=1.0),
+            limits=httpx.Limits(max_keepalive_connections=4, max_connections=8),
+        )
+    return _SNAPSHOT_HTTP_CLIENT
+
+
+def _get_apriltag_detector(cv2, dictionary_name: str):
+    detector = _APRILTAG_DETECTORS.get(dictionary_name)
+    if detector is not None:
+        return detector
+    aruco = cv2.aruco
+    dictionary = aruco.getPredefinedDictionary(getattr(aruco, dictionary_name))
+    try:
+        params = aruco.DetectorParameters()
+        detector = ('new', aruco.ArucoDetector(dictionary, params), None)
+    except Exception:
+        params = aruco.DetectorParameters_create()
+        detector = ('legacy', dictionary, params)
+    _APRILTAG_DETECTORS[dictionary_name] = detector
+    return detector
 
 
 def _capture_frame_from_stream(url: str) -> bytes:
-    cv2, _ = _load_cv2()
-    cap = cv2.VideoCapture(url)
-    try:
-        if hasattr(cv2, 'CAP_PROP_BUFFERSIZE'):
-            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        if not cap.isOpened():
-            raise RuntimeError(f'Stream video non raggiungibile: {url}')
-        ok = False
-        frame = None
-        for _ in range(8):
-            ok, frame = cap.read()
-            if ok and frame is not None:
-                break
-        if not ok or frame is None:
-            raise RuntimeError(f'Impossibile leggere un frame dallo stream: {url}')
-        encoded, buffer = cv2.imencode('.jpg', frame)
-        if not encoded:
-            raise RuntimeError('Impossibile convertire il frame in JPEG.')
-        return buffer.tobytes()
-    finally:
-        cap.release()
+    return _STREAM_FRAME_CACHE.get_jpeg(url)
 
 
 async def _download_snapshot(url: str, stream_url: str = '') -> bytes:
@@ -477,16 +596,16 @@ async def _download_snapshot(url: str, stream_url: str = '') -> bytes:
     if not candidates:
         raise RuntimeError('Snapshot URL camera non configurato in Settings.')
     errors: list[str] = []
-    async with httpx.AsyncClient(timeout=5.0) as client:
-        for candidate in dict.fromkeys(candidates):
-            try:
-                sep = '&' if '?' in candidate else '?'
-                response = await client.get(f'{candidate}{sep}t={int(time.time()*1000)}')
-                if response.status_code < 400 and response.content:
-                    return response.content
-                errors.append(f'{candidate} -> HTTP {response.status_code}')
-            except Exception as exc:
-                errors.append(f'{candidate} -> {exc}')
+    client = _get_snapshot_http_client()
+    for candidate in dict.fromkeys(candidates):
+        try:
+            sep = '&' if '?' in candidate else '?'
+            response = await client.get(f'{candidate}{sep}t={int(time.time()*1000)}')
+            if response.status_code < 400 and response.content:
+                return response.content
+            errors.append(f'{candidate} -> HTTP {response.status_code}')
+        except Exception as exc:
+            errors.append(f'{candidate} -> {exc}')
     raise RuntimeError('Snapshot camera non raggiungibile. Provati: ' + ' | '.join(errors))
 
 
@@ -509,14 +628,11 @@ def _detect_apriltags_from_jpeg(image_bytes: bytes, target_id: int | None = None
     for name in dict_names:
         if not hasattr(aruco, name):
             continue
-        dictionary = aruco.getPredefinedDictionary(getattr(aruco, name))
-        try:
-            params = aruco.DetectorParameters()
-            detector = aruco.ArucoDetector(dictionary, params)
+        detector_kind, detector, params = _get_apriltag_detector(cv2, name)
+        if detector_kind == 'new':
             corners, ids, _ = detector.detectMarkers(gray)
-        except Exception:
-            params = aruco.DetectorParameters_create()
-            corners, ids, _ = aruco.detectMarkers(gray, dictionary, parameters=params)
+        else:
+            corners, ids, _ = aruco.detectMarkers(gray, detector, parameters=params)
         if ids is None or len(ids) == 0:
             continue
         for i, marker_corners in enumerate(corners):

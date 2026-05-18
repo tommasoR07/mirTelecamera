@@ -27,6 +27,7 @@
   let lastTag = null;
   let followEnabled = false;
   let followTimer = null;
+  let followDelayMs = 180;
   let busy = false;
 
   function setText(el, value) { if (el) el.textContent = value; }
@@ -227,7 +228,7 @@
 
   async function detectTag() {
     followEnabled = false;
-    if (followTimer) clearInterval(followTimer);
+    if (followTimer) clearTimeout(followTimer);
     followTimer = null;
     selectedTagId = null;
     setText(followStateEl, 'riconoscimento AprilTag in corso...');
@@ -244,14 +245,22 @@
     }
     followEnabled = true;
     setText(followStateEl, `follow avviato su AprilTag ID ${selectedTagId}`);
-    if (followTimer) clearInterval(followTimer);
-    tagStep(true, false).catch(() => {});
-    followTimer = setInterval(() => tagStep(true, false).catch(() => {}), 650);
+    if (followTimer) clearTimeout(followTimer);
+    followLoop();
+  }
+
+  async function followLoop() {
+    if (!followEnabled) return;
+    const started = performance.now();
+    await tagStep(true, false).catch(() => {});
+    if (!followEnabled) return;
+    const elapsed = performance.now() - started;
+    followTimer = setTimeout(followLoop, Math.max(80, followDelayMs - elapsed));
   }
 
   async function stopFollow() {
     followEnabled = false;
-    if (followTimer) clearInterval(followTimer);
+    if (followTimer) clearTimeout(followTimer);
     followTimer = null;
     setText(followStateEl, 'arresto follow...');
     try {
