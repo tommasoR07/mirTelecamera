@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% block title %}Tracking AprilTag{% endblock %}
+{% block content %}
+<h1>Tracking AprilTag con telefono</h1>
+<div class="grid two">
+  <section class="card">
+    <h2>Video live dalla camera IP</h2>
+    <p class="note">Usa una pettorina con <strong>AprilTag</strong> davanti e dietro. Premi <strong>Riconosci AprilTag</strong> e mettiti dentro il riquadro blu: l'app acquisisce l'ID del tag e poi seguirà solo quel target.</p>
+    <div class="stack">
+      <label>Stream URL telefono
+        <input id="streamUrlInput" value="{{ camera_stream_url }}" placeholder="rtsp://IP_TELEFONO:8554/live oppure http://IP_TELEFONO:8080/video">
+      </label>
+      <label>Snapshot URL opzionale
+        <input id="snapshotUrlInput" value="{{ camera_snapshot_url }}" placeholder="http://IP_TELEFONO:8080/shot.jpg">
+      </label>
+      <div class="row wrap">
+        <button class="btn" id="connectStreamBtn" type="button">Connetti stream</button>
+        <button class="btn" id="detectTagBtn" type="button">Riconosci AprilTag</button>
+        <button class="btn success" id="startTagFollowBtn" type="button">Segui AprilTag</button>
+        <button class="btn warn" id="stopFollowBtn" type="button">Stop follow</button>
+        <button class="btn ghost" id="clearTargetBtn" type="button">Rimuovi target</button>
+      </div>
+    </div>
+    <div class="video-wrap">
+      <img id="trackingStream" alt="Stream telefono">
+      <canvas id="trackingOverlay"></canvas>
+    </div>
+  </section>
+  <section class="card">
+    <h2>Dati tracking</h2>
+    <div class="stack">
+      <label>Distanza target desiderata (dimensione AprilTag nel frame)
+        <input id="trackingTargetSize" type="range" min="8" max="40" step="1" value="18">
+      </label>
+      <div class="row small"><span>Dimensione tag desiderata</span><strong id="trackingTargetSizeValue">18%</strong></div>
+      <p class="note">Il follow non usa joystick manuale: quando il tag si sposta, l'app sceglie e accoda una micro-missione MiR solo quando il comando è stabile: <strong>follow_avanti</strong>, <strong>follow_sinistra</strong>, <strong>follow_destra</strong> o <strong>follow_stop</strong>.</p>
+      <input id="trackingLinearGain" type="hidden" value="0.10">
+      <input id="trackingAngularGain" type="hidden" value="0.30">
+    </div>
+    <dl class="kv compact" id="trackingStats">
+      <div><dt>Stream</dt><dd id="trackingStreamState">non connesso</dd></div>
+      <div><dt>Target</dt><dd id="trackingTargetState">non acquisito</dd></div>
+      <div><dt>AprilTag ID</dt><dd id="trackingTagId">-</dd></div>
+      <div><dt>Offset X</dt><dd id="trackingOffset">-</dd></div>
+      <div><dt>Dimensione frame</dt><dd id="trackingRatio">-</dd></div>
+      <div><dt>Suggerimento</dt><dd id="trackingSuggestion">stop</dd></div>
+      <div><dt>Micro-missione</dt><dd id="trackingCommand">stop</dd></div>
+      <div><dt>Follow</dt><dd id="trackingFollowState">spento</dd></div>
+    </dl>
+    <p class="note">Il robot si muove tramite micro-missioni MiR configurate in Settings. Se il tag viene perso, l'app cancella la queue e accoda <strong>follow_stop</strong>.</p>
+  </section>
+</div>
+<section class="card">
+  <h2>Come preparare la pettorina</h2>
+  <ol>
+    <li>Stampa un AprilTag grande e rigido, almeno 12–18 cm di lato.</li>
+    <li>Metti un tag davanti e uno dietro, meglio con lo stesso ID o comunque con ID che l'app può acquisire quando premi <strong>Riconosci AprilTag</strong>.</li>
+    <li>Entra nel riquadro blu con il tag ben illuminato e non piegato.</li>
+    <li>Quando l'app mostra l'ID acquisito, premi <strong>Segui AprilTag</strong>.</li>
+  </ol>
+</section>
+<script src="/static/tracking.js?v=mission-follow-1"></script>
+{% endblock %}

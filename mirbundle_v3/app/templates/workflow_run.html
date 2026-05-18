@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Esecuzione workflow{% endblock %}
+{% block content %}
+<h1>Esecuzione workflow</h1>
+<section class="card">
+  <h2>{{ workflow.name if workflow else 'Workflow non trovato' }}</h2>
+  {% if workflow %}
+    <p>{{ workflow.description }}</p>
+  {% endif %}
+  <pre>{% for line in logs %}{{ line }}
+{% endfor %}</pre>
+  <a class="btn" href="/workflows">Torna ai workflow</a>
+</section>
+{% endblock %}

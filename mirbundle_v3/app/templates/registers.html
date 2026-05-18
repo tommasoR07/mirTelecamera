@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Registri{% endblock %}
+{% block content %}
+<h1>Registri PLC</h1>
+<div class="grid two">
+  <section class="card">
+    <h2>Scrivi registro</h2>
+    <form method="post" action="/registers/write" class="stack">
+      <label>ID registro
+        <input type="number" name="register_id" min="1" max="200" required>
+      </label>
+      <label>Valore
+        <input name="value" required>
+      </label>
+      <button class="btn" type="submit">Invia</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>Elenco registri</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Valore</th><th>URL</th></tr></thead>
+      <tbody>
+      {% for item in registers %}
+        <tr><td>{{ item.id or '-' }}</td><td>{{ item.value or '-' }}</td><td class="mono">{{ item.url or '-' }}</td></tr>
+      {% else %}
+        <tr><td colspan="3">Nessun dato disponibile.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

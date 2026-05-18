@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block title %}Mappe / Localizzazione{% endblock %}
+{% block content %}
+<h1>Mappe e localizzazione</h1>
+<section class="card narrow">
+  <h2>1. Seleziona mappa</h2>
+  <form method="get" action="/maps" class="stack">
+    <label>Mappa
+      <select name="map_id">
+        {% for item in maps %}
+        <option value="{{ item.guid }}" {% if selected_map == item.guid %}selected{% endif %}>{{ item.name or item.guid }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="btn" type="submit">Carica posizioni</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>2. Ripristino quando il MiR perde la posizione</h2>
+  <p class="note">Se il robot non sa più dov'è, mettilo fisicamente vicino a una posizione salvata della mappa, seleziona quella posizione e premi <strong>Localizza qui</strong>. Se il firmware non accetta la localizzazione via API, l'app mostra l'errore reale del MiR.</p>
+  <form method="post" action="/maps/localize" class="stack">
+    <input type="hidden" name="map_id" value="{{ selected_map }}">
+    <label>Posizione di riferimento
+      <select name="position_id" required>
+        {% for item in positions %}
+        <option value="{{ item.guid }}">{{ item.name or item.guid }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="row wrap">
+      <button class="btn success" type="submit">Localizza qui</button>
+      <button class="btn" type="submit" formaction="/maps/set-active">Imposta mappa attiva</button>
+    </div>
+  </form>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Posizioni disponibili</h2>
+    <table>
+      <thead><tr><th>Nome</th><th>Tipo</th><th>GUID</th></tr></thead>
+      <tbody>
+      {% for item in positions %}
+        <tr><td>{{ item.name or '-' }}</td><td>{{ item.type_id or item.type_name or '-' }}</td><td class="mono">{{ item.guid }}</td></tr>
+      {% else %}
+        <tr><td colspan="3">Nessuna posizione.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  <section class="card">
+    <h2>Zone</h2>
+    <table>
+      <thead><tr><th>Nome</th><th>Tipo</th><th>GUID</th></tr></thead>
+      <tbody>
+      {% for item in zones %}
+        <tr><td>{{ item.name or '-' }}</td><td>{{ item.type_id or item.type_name or '-' }}</td><td class="mono">{{ item.guid }}</td></tr>
+      {% else %}
+        <tr><td colspan="3">Nessuna zona o endpoint zone non supportato.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

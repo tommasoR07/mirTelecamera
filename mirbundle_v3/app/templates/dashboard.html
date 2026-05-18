@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Dashboard robot</h1>
+<div class="grid two">
+  <section class="card">
+    <h2>Stato</h2>
+    {% if status %}
+    <dl class="kv">
+      <div><dt>Robot</dt><dd>{{ status.robot_name or '-' }}</dd></div>
+      <div><dt>State</dt><dd><strong>{{ status.state_text or '-' }}</strong></dd></div>
+      <div><dt>Battery</dt><dd>{{ status.battery_percentage or '-' }}%</dd></div>
+      <div><dt>Velocity</dt><dd>{{ status.velocity or '-' }}</dd></div>
+      <div><dt>Mode</dt><dd>{{ status.mode_text or status.mode_id or '-' }}</dd></div>
+      <div><dt>Mappa</dt><dd>{{ status.map_text or status.map_id or '-' }}</dd></div>
+    </dl>
+    {% else %}
+      <p>Nessun dato disponibile.</p>
+    {% endif %}
+    <div class="actions three">
+      <a class="btn" href="/">Aggiorna</a>
+      <form method="post" action="/robot/ready">
+        <button class="btn success" type="submit">Metti Ready / Resume</button>
+      </form>
+      <form method="post" action="/robot/clear-errors">
+        <button class="btn warn" type="submit">Reset errori</button>
+      </form>
+    </div>
+    <p class="note">Usa <strong>Metti Ready / Resume</strong> quando il MiR resta in Pause e non parte con le missioni.</p>
+  </section>
+
+  <section class="card">
+    <h2>Ultima queue</h2>
+    <table>
+      <thead><tr><th>ID</th><th>Missione</th><th>Stato</th></tr></thead>
+      <tbody>
+      {% for item in queue %}
+        <tr>
+          <td>{{ item.id or '-' }}</td>
+          <td>{{ item.mission_text or item.mission_id or '-' }}</td>
+          <td>{{ item.state or item.state_text or item.state_id or '-' }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3">Nessuna missione in queue.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Funzioni principali progetto finale</h2>
+  <div class="grid two">
+    <div>
+      <h3>1. Controllo MiR</h3>
+      <p>Dashboard, stato robot, Ready/Resume, reset errori, missioni e coda.</p>
+    </div>
+    <div>
+      <h3>2. Tracking telefono</h3>
+      <p>Video da telefono usato come camera IP e selezione AprilTag dalla pagina Tracking.</p>
+    </div>
+  </div>
+</section>
+{% endblock %}

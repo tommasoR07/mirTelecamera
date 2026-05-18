@@ -1,0 +1,62 @@
+{% extends 'base.html' %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Configurazione</h1>
+<section class="card narrow">
+  <form method="post" action="/settings" class="stack">
+    <h2>Connessione MiR</h2>
+    <label>Robot host
+      <input name="host" value="{{ settings.host }}" placeholder="http://192.168.12.20" required>
+    </label>
+    <label>Username
+      <input name="username" value="{{ settings.username }}" required>
+    </label>
+    <label>Password
+      <input type="password" name="password" value="{{ settings.password }}" required>
+    </label>
+    <label>Mission group id predefinito
+      <input name="mission_group_id" value="{{ settings.mission_group_id }}" placeholder="opzionale">
+    </label>
+
+    <hr class="sep">
+    <h2>Telefono come camera IP</h2>
+    <p class="note">Inserisci l'URL video generato dall'app sul telefono. HTTP/MJPEG funziona anche come anteprima nel browser; RTSP/RTMP viene usato dal backend per leggere i frame AprilTag.</p>
+    <label>Stream URL telefono
+      <input name="camera_stream_url" value="{{ settings.camera_stream_url }}" placeholder="rtsp://IP_TELEFONO:8554/live oppure http://IP_TELEFONO:8080/video">
+    </label>
+    <label>Snapshot URL opzionale
+      <input name="camera_snapshot_url" value="{{ settings.camera_snapshot_url }}" placeholder="http://IP_TELEFONO:8080/shot.jpg">
+    </label>
+
+    <hr class="sep">
+    <h2>Follow AprilTag tramite micro-missioni MiR</h2>
+    <p class="note">Il MiR non espone un endpoint REST di joystick/velocity. Il follow usa quindi missioni brevi già create sul robot. Puoi inserire il nome missione oppure il GUID.</p>
+    <label>Missione avanti
+      <input name="follow_forward_mission" value="{{ settings.follow_forward_mission or 'follow_avanti' }}" placeholder="follow_avanti">
+    </label>
+    <label>Missione sinistra
+      <input name="follow_left_mission" value="{{ settings.follow_left_mission or 'follow_sinistra' }}" placeholder="follow_sinistra">
+    </label>
+    <label>Missione destra
+      <input name="follow_right_mission" value="{{ settings.follow_right_mission or 'follow_destra' }}" placeholder="follow_destra">
+    </label>
+    <label>Missione stop
+      <input name="follow_stop_mission" value="{{ settings.follow_stop_mission or 'follow_stop' }}" placeholder="follow_stop">
+    </label>
+    <label>Intervallo minimo tra micro-missioni, secondi
+      <input name="follow_min_interval_seconds" value="{{ settings.follow_min_interval_seconds or '1.4' }}" placeholder="1.4">
+    </label>
+
+    <input type="hidden" name="drive_endpoint_path" value="">
+    <input type="hidden" name="drive_http_method" value="POST">
+    <input type="hidden" name="drive_body_template" value='{"linear": {{linear}}, "angular": {{angular}}}'>
+    <input type="hidden" name="manual_take_endpoint_path" value="{{ settings.manual_take_endpoint_path }}">
+    <input type="hidden" name="manual_take_http_method" value="{{ settings.manual_take_http_method }}">
+    <input type="hidden" name="manual_take_body_template" value='{{ settings.manual_take_body_template }}'>
+    <input type="hidden" name="manual_release_endpoint_path" value="{{ settings.manual_release_endpoint_path }}">
+    <input type="hidden" name="manual_release_http_method" value="{{ settings.manual_release_http_method }}">
+    <input type="hidden" name="manual_release_body_template" value='{{ settings.manual_release_body_template }}'>
+    <button class="btn" type="submit">Salva configurazione</button>
+  </form>
+</section>
+{% endblock %}

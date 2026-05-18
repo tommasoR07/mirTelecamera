@@ -1,0 +1,16 @@
+[Unit]
+Description=MiR Raspberry Camera Server
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/raspberry_camera
+Environment=CAMERA_DEVICE=0
+Environment=CAMERA_WIDTH=640
+Environment=CAMERA_HEIGHT=480
+Environment=CAMERA_FPS=15
+ExecStart=/home/pi/raspberry_camera/.venv/bin/uvicorn camera_server:app --host 0.0.0.0 --port 8081
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+streams:
+  live:
+    - rtsp://192.168.12.200:8554/live
+
+api:
+  listen: ":1984"
+
+rtsp:
+  listen: ":8555"
+
+webrtc:
+  listen: ":8556/tcp"
+  candidates:
+    - stun:8556

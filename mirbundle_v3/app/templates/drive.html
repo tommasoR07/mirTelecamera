@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}Drive{% endblock %}
+{% block content %}
+<h1>Controllo movimento manuale</h1>
+<div class="grid two">
+  <section class="card">
+    <h2>Stato attuale</h2>
+    {% if status %}
+    <dl class="kv">
+      <div><dt>Robot</dt><dd>{{ status.robot_name or '-' }}</dd></div>
+      <div><dt>State</dt><dd>{{ status.state_text or '-' }}</dd></div>
+      <div><dt>Battery</dt><dd>{{ status.battery_percentage or '-' }}%</dd></div>
+      <div><dt>Velocity</dt><dd>{{ status.velocity or '-' }}</dd></div>
+      <div><dt>Mode</dt><dd>{{ status.mode_text or status.mode_id or '-' }}</dd></div>
+    </dl>
+    {% endif %}
+    <p class="note">Da qui puoi provare ad attivare/rilasciare la modalità manuale e comandare il robot senza aprire il sito MiR. Se il firmware non accetta i fallback automatici, configura gli endpoint precisi in Settings.</p>
+  </section>
+  <section class="card">
+    <h2>Controllo manuale</h2>
+    <div class="row wrap">
+      <button class="btn" id="takeControlBtn" type="button">Attiva manual mode</button>
+      <button class="btn" id="readyBtn" type="button">Ready / Resume</button>
+      <button class="btn" id="releaseControlBtn" type="button">Rilascia controllo</button>
+      <button class="btn danger" id="pauseBtn" type="button">Pausa</button>
+    </div>
+    <p class="note">Sequenza consigliata: <strong>Attiva manual mode</strong> → prova <strong>STOP</strong> → poi muovi piano con W/A/S/D.</p>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Parametri drive</h2>
+  <div class="grid two">
+    <div class="stack">
+      <label>Velocità lineare
+        <input id="linearSpeed" type="range" min="0.02" max="0.5" step="0.01" value="0.10">
+      </label>
+      <div class="row small"><span>Valore</span><strong id="linearValue">0.10 m/s</strong></div>
+    </div>
+    <div class="stack">
+      <label>Velocità angolare
+        <input id="angularSpeed" type="range" min="0.05" max="1.50" step="0.05" value="0.35">
+      </label>
+      <div class="row small"><span>Valore</span><strong id="angularValue">0.35 rad/s</strong></div>
+    </div>
+  </div>
+  <label><input id="repeatSend" type="checkbox" checked> Invio ripetuto mentre tieni premuto</label>
+</section>
+
+<section class="card drive-card">
+  <div class="drive-pad">
+    <button class="btn drive-btn" data-linear="0" data-angular="0" id="btnStopCenter">STOP</button>
+    <button class="btn drive-btn" data-linear="1" data-angular="0" id="btnForward">▲</button>
+    <button class="btn drive-btn" data-linear="-1" data-angular="0" id="btnBackward">▼</button>
+    <button class="btn drive-btn" data-linear="0" data-angular="1" id="btnLeft">◀</button>
+    <button class="btn drive-btn" data-linear="0" data-angular="-1" id="btnRight">▶</button>
+  </div>
+  <div class="row wrap">
+    <button class="btn danger" id="stopAllBtn" type="button">Stop immediato</button>
+    <button class="btn" id="sendForwardBtn" type="button">Invia avanti</button>
+    <button class="btn" id="sendLeftBtn" type="button">Invia sinistra</button>
+    <button class="btn" id="sendRightBtn" type="button">Invia destra</button>
+    <button class="btn" id="sendBackwardBtn" type="button">Invia indietro</button>
+  </div>
+  <p class="note">Scorciatoie tastiera: frecce direzionali o WASD. Barra spaziatrice per stop.</p>
+</section>
+<section class="card">
+  <h2>Esito ultimo comando</h2>
+  <pre id="driveResult">Nessun comando inviato.</pre>
+</section>
+<script src="/static/drive.js"></script>
+{% endblock %}

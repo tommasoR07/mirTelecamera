@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Workflow{% endblock %}
+{% block content %}
+<h1>Workflow programmabili locali</h1>
+<div class="grid two">
+  <section class="card">
+    <h2>Nuovo workflow</h2>
+    <form method="post" action="/workflows" class="stack">
+      <label>Nome
+        <input name="name" required>
+      </label>
+      <label>Descrizione
+        <textarea name="description" rows="3"></textarea>
+      </label>
+      <label>Steps JSON
+        <textarea name="steps_json" rows="16" class="mono">[
+  {"type": "clear_errors"},
+  {"type": "enqueue_mission", "mission_id": "GUID_MISSIONE"},
+  {"type": "wait_seconds", "seconds": 2},
+  {"type": "set_register", "register_id": 1, "value": 1},
+  {"type": "drive_command", "linear": 0.1, "angular": 0.0}
+]</textarea>
+      </label>
+      <button class="btn" type="submit">Salva workflow</button>
+    </form>
+    <p class="note">Tipi supportati: <code>clear_errors</code>, <code>enqueue_mission</code>, <code>wait_seconds</code>, <code>set_register</code>, <code>drive_command</code>.</p>
+  </section>
+  <section class="card">
+    <h2>Workflow salvati</h2>
+    {% for wf in workflows %}
+      <article class="workflow-item">
+        <div class="row space">
+          <div>
+            <h3>{{ wf.name }}</h3>
+            <p>{{ wf.description }}</p>
+            <small>{{ wf.created_at }}</small>
+          </div>
+          <div class="stack-inline">
+            <form method="post" action="/workflows/{{ wf.id }}/run">
+              <button class="btn" type="submit">Esegui</button>
+            </form>
+            <form method="post" action="/workflows/{{ wf.id }}/delete">
+              <button class="btn danger" type="submit">Elimina</button>
+            </form>
+          </div>
+        </div>
+        <pre>{{ wf.steps | tojson(indent=2) }}</pre>
+      </article>
+    {% else %}
+      <p>Nessun workflow salvato.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}
