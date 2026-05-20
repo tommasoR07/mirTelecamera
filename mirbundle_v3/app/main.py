@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import quote
 from typing import Any
 import asyncio
+import json
 import threading
 import time
 
@@ -24,6 +25,14 @@ app = FastAPI(title='MiR Tracking System')
 app.mount('/static', StaticFiles(directory=str(BASE_DIR / 'static')), name='static')
 templates = Jinja2Templates(directory=str(BASE_DIR / 'templates'))
 _SNAPSHOT_HTTP_CLIENT: httpx.AsyncClient | None = None
+TRACKING_SETTINGS_PATH = BASE_DIR / 'data' / 'tracking_settings.json'
+DEFAULT_TRACKING_SETTINGS: dict[str, Any] = {
+    'targetSize': '32',
+    'maxLinear': '1.50',
+    'maxAngular': '1.50',
+    'pidHz': '30',
+    'detectWidth': '640',
+}
 
 
 def redirect(path: str) -> RedirectResponse:
@@ -43,6 +52,28 @@ def render(request: Request, template: str, **context):
     }
     base_context.update(context)
     return templates.TemplateResponse(template, base_context)
+
+
+def _load_tracking_settings() -> dict[str, Any]:
+    data = DEFAULT_TRACKING_SETTINGS.copy()
+    try:
+        if TRACKING_SETTINGS_PATH.exists():
+            loaded = json.loads(TRACKING_SETTINGS_PATH.read_text(encoding='utf-8'))
+            if isinstance(loaded, dict):
+                data.update({k: str(v) for k, v in loaded.items() if k in data})
+    except Exception:
+        pass
+    return data
+
+
+def _save_tracking_settings(payload: dict[str, Any]) -> dict[str, Any]:
+    data = DEFAULT_TRACKING_SETTINGS.copy()
+    for key in data:
+        value = payload.get(key, data[key])
+        data[key] = str(value).strip() or data[key]
+    TRACKING_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    TRACKING_SETTINGS_PATH.write_text(json.dumps(data, indent=2), encoding='utf-8')
+    return data
 
 
 @app.on_event('startup')
@@ -273,6 +304,7 @@ def tracking_page(request: Request):
         'tracking.html',
         camera_stream_url=settings.get('camera_stream_url', ''),
         camera_snapshot_url=settings.get('camera_snapshot_url', ''),
+        tracking_settings=_load_tracking_settings(),
     )
 
 
@@ -281,6 +313,16 @@ def tracking_page(request: Request):
 @app.get('/joystick-lab', response_class=HTMLResponse)
 def joystick_lab_page(request: Request):
     return render(request, 'joystick_lab.html')
+
+
+@app.get('/api/tracking/settings')
+def tracking_settings_get():
+    return {'ok': True, 'settings': _load_tracking_settings()}
+
+
+@app.post('/api/tracking/settings')
+def tracking_settings_save(payload: dict[str, Any] = Body(default_factory=dict)):
+    return {'ok': True, 'settings': _save_tracking_settings(payload)}
 
 
 # ---------------- Tracking AprilTag + follow ----------------

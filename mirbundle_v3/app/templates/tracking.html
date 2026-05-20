@@ -32,15 +32,15 @@
     <h2>Controllo PID</h2>
     <div class="stack">
       <label>Distanza target desiderata, percentuale frame
-        <input id="trackingTargetSize" type="number" min="12" max="80" step="1" value="32">
+        <input id="trackingTargetSize" type="number" min="12" max="80" step="1" value="{{ tracking_settings.targetSize or '32' }}">
       </label>
-      <div class="row small"><span>Dimensione tag desiderata</span><strong id="trackingTargetSizeValue">32%</strong></div>
+      <div class="row small"><span>Dimensione tag desiderata</span><strong id="trackingTargetSizeValue">{{ tracking_settings.targetSize or '32' }}%</strong></div>
       <div class="pid-input-grid">
         <label>Lineare max
-          <input id="trackingLinearGain" type="number" min="0" max="5" step="0.01" value="1.50">
+          <input id="trackingLinearGain" type="number" min="0" max="5" step="0.01" value="{{ tracking_settings.maxLinear or '1.50' }}">
         </label>
         <label>Angolare max
-          <input id="trackingAngularGain" type="number" min="0" max="5" step="0.01" value="1.50">
+          <input id="trackingAngularGain" type="number" min="0" max="5" step="0.01" value="{{ tracking_settings.maxAngular or '1.50' }}">
         </label>
       </div>
       <div class="row wrap">
@@ -50,8 +50,8 @@
       </div>
       <button class="btn success" id="saveTrackingSettingsBtn" type="button">Salva valori tracking</button>
       <p class="note">Per 1080p, con AprilTag fisico da circa 16-18 cm, 1 metro di distanza tende a stare intorno al 16-22% del frame. Se il tag e' da 12 cm prova 12-16%; se e' da 20 cm prova 20-26%.</p>
-      <input id="trackingPidHz" type="hidden" value="30">
-      <input id="trackingDetectWidth" type="hidden" value="640">
+      <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '30' }}">
+      <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '640' }}">
       <input id="trackingPidLinearKp" type="hidden" value="7.50">
       <input id="trackingPidLinearKi" type="hidden" value="0.00">
       <input id="trackingPidLinearKd" type="hidden" value="0.45">
@@ -73,5 +73,5 @@
   </section>
 </div>
 
-<script src="/static/tracking.js?v=pid-rosbridge-9"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-10"></script>
 {% endblock %}

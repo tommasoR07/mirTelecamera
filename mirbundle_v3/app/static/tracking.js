@@ -79,31 +79,60 @@
     return Math.max(min, Math.min(max, value));
   }
 
-  function updateTargetSizeLabel() {
-    setText(desiredRatioValue, `${desiredRatioInput?.value || 18}%`);
-    saveTrackingSettings();
-  }
-
-  function saveTrackingSettings() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+  function currentTrackingSettings() {
+    return {
       targetSize: desiredRatioInput?.value || '32',
       maxLinear: maxLinearInput?.value || '1.50',
       maxAngular: maxAngularInput?.value || '1.50',
       pidHz: pidHzInput?.value || '30',
       detectWidth: detectWidthInput?.value || '640',
-    }));
-    setText(followStateEl, 'valori tracking salvati');
+    };
   }
 
-  function loadTrackingSettings() {
+  function applyTrackingSettings(saved) {
+    if (saved.targetSize) desiredRatioInput.value = saved.targetSize;
+    if (saved.maxLinear) maxLinearInput.value = saved.maxLinear;
+    if (saved.maxAngular) maxAngularInput.value = saved.maxAngular;
+    if (saved.pidHz) pidHzInput.value = saved.pidHz;
+    if (saved.detectWidth) detectWidthInput.value = saved.detectWidth;
+    updatePresetActiveState();
+  }
+
+  function updateTargetSizeLabel() {
+    setText(desiredRatioValue, `${desiredRatioInput?.value || 18}%`);
+    saveTrackingSettings(false);
+  }
+
+  async function saveTrackingSettings(persistServer = false) {
+    const settings = currentTrackingSettings();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    if (!persistServer) return;
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-      if (saved.targetSize) desiredRatioInput.value = saved.targetSize;
-      if (saved.maxLinear) maxLinearInput.value = saved.maxLinear;
-      if (saved.maxAngular) maxAngularInput.value = saved.maxAngular;
-      if (saved.pidHz) pidHzInput.value = saved.pidHz;
-      if (saved.detectWidth) detectWidthInput.value = saved.detectWidth;
-      updatePresetActiveState();
+      const res = await fetch('/api/tracking/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok && data.settings) applyTrackingSettings(data.settings);
+      setText(followStateEl, data.ok ? 'valori tracking salvati su JSON' : 'errore salvataggio tracking');
+    } catch (err) {
+      setText(followStateEl, `errore salvataggio tracking: ${err}`);
+    }
+  }
+
+  async function loadTrackingSettings() {
+    try {
+      const res = await fetch('/api/tracking/settings');
+      const data = await res.json();
+      if (data.ok && data.settings) {
+        applyTrackingSettings(data.settings);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data.settings));
+        return;
+      }
+    } catch (_) {}
+    try {
+      applyTrackingSettings(JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'));
     } catch (_) {}
   }
 
@@ -525,7 +554,7 @@
     maxAngularInput.value = button.dataset.angular || maxAngularInput.value;
     pidHzInput.value = button.dataset.hz || pidHzInput.value;
     detectWidthInput.value = button.dataset.detectWidth || detectWidthInput.value;
-    saveTrackingSettings();
+    saveTrackingSettings(false);
   }
 
   clearBtn?.addEventListener('click', () => {
@@ -541,17 +570,18 @@
   stopFollowBtn?.addEventListener('click', stopFollow);
   totalResetBtn?.addEventListener('click', totalReset);
   desiredRatioInput?.addEventListener('input', updateTargetSizeLabel);
-  maxLinearInput?.addEventListener('input', saveTrackingSettings);
-  maxAngularInput?.addEventListener('input', saveTrackingSettings);
-  pidHzInput?.addEventListener('input', saveTrackingSettings);
-  detectWidthInput?.addEventListener('input', saveTrackingSettings);
-  saveSettingsBtn?.addEventListener('click', saveTrackingSettings);
+  maxLinearInput?.addEventListener('input', () => saveTrackingSettings(false));
+  maxAngularInput?.addEventListener('input', () => saveTrackingSettings(false));
+  pidHzInput?.addEventListener('input', () => saveTrackingSettings(false));
+  detectWidthInput?.addEventListener('input', () => saveTrackingSettings(false));
+  saveSettingsBtn?.addEventListener('click', () => saveTrackingSettings(true));
   document.querySelectorAll('.tracking-preset').forEach((button) => {
     button.addEventListener('click', () => applyPreset(button));
   });
-  loadTrackingSettings();
-  updatePresetActiveState();
-  updateTargetSizeLabel();
+  loadTrackingSettings().finally(() => {
+    updatePresetActiveState();
+    updateTargetSizeLabel();
+  });
   setText(followStateEl, 'pronto');
   drawGuide();
 })();
