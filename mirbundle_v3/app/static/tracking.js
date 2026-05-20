@@ -1,5 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
+
   const streamImg = $('trackingStream');
   const overlay = $('trackingOverlay');
   const ctx = overlay ? overlay.getContext('2d') : null;
@@ -10,30 +11,178 @@
   const clearBtn = $('clearTargetBtn');
   const streamUrlInput = $('streamUrlInput');
   const snapshotUrlInput = $('snapshotUrlInput');
+  const mirHostInput = $('mirHostInput');
   const streamStateEl = $('trackingStreamState');
+  const rosStateEl = $('trackingRosState');
   const targetStateEl = $('trackingTargetState');
   const tagIdEl = $('trackingTagId');
   const offsetEl = $('trackingOffset');
   const ratioEl = $('trackingRatio');
-  const suggestionEl = $('trackingSuggestion');
   const commandEl = $('trackingCommand');
   const followStateEl = $('trackingFollowState');
   const desiredRatioInput = $('trackingTargetSize');
   const desiredRatioValue = $('trackingTargetSizeValue');
   const maxLinearInput = $('trackingLinearGain');
   const maxAngularInput = $('trackingAngularGain');
+  const turboOverride = $('trackingTurboOverride');
+
+  const pidInputs = {
+    linearKp: $('trackingPidLinearKp'),
+    linearKi: $('trackingPidLinearKi'),
+    linearKd: $('trackingPidLinearKd'),
+    angularKp: $('trackingPidAngularKp'),
+    angularKi: $('trackingPidAngularKi'),
+    angularKd: $('trackingPidAngularKd'),
+  };
 
   let selectedTagId = null;
-  let lastTag = null;
   let followEnabled = false;
   let followTimer = null;
-  let followDelayMs = 180;
   let busy = false;
+  let socket = null;
+  let advertised = false;
+  let joystickToken = '';
+  let lastSeenAt = 0;
+  let pid = resetPid();
 
-  function setText(el, value) { if (el) el.textContent = value; }
+  function resetPid() {
+    return {
+      lastTs: 0,
+      distanceIntegral: 0,
+      distancePrev: 0,
+      offsetIntegral: 0,
+      offsetPrev: 0,
+    };
+  }
+
+  function setText(el, value) {
+    if (el) el.textContent = value;
+  }
+
+  function number(el, fallback) {
+    const value = Number(el?.value);
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
 
   function updateTargetSizeLabel() {
-    if (desiredRatioValue && desiredRatioInput) desiredRatioValue.textContent = `${desiredRatioInput.value}%`;
+    setText(desiredRatioValue, `${desiredRatioInput?.value || 18}%`);
+  }
+
+  function buildSocketUrl() {
+    const rawHost = (mirHostInput?.value || '').trim();
+    if (!rawHost) return '';
+    let url;
+    try {
+      url = new URL(rawHost.includes('://') ? rawHost : `http://${rawHost}`);
+    } catch (_) {
+      return '';
+    }
+    return window.location.protocol === 'https:'
+      ? `wss://${url.hostname}:443/rosbridge/`
+      : `ws://${url.hostname}:9090`;
+  }
+
+  function rosSend(obj) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(obj));
+    return true;
+  }
+
+  function advertiseJoystick() {
+    advertised = rosSend({
+      op: 'advertise',
+      topic: '/joystick_vel',
+      type: 'mirMsgs/JoystickVel',
+    });
+  }
+
+  function requestManualControl() {
+    const webSessionId = `aruco_tracker_${Date.now()}`;
+    rosSend({
+      op: 'call_service',
+      service: '/mirsupervisor/setRobotState',
+      type: 'mirSupervisor/SetState',
+      args: {
+        robotState: 11,
+        web_session_id: webSessionId,
+      },
+      id: `tracking_manual_${Date.now()}`,
+    });
+  }
+
+  function ensureRosBridge() {
+    return new Promise((resolve) => {
+      if (socket && socket.readyState === WebSocket.OPEN && joystickToken) {
+        resolve(true);
+        return;
+      }
+      const socketUrl = buildSocketUrl();
+      if (!socketUrl) {
+        setText(rosStateEl, 'host MiR non configurato');
+        resolve(false);
+        return;
+      }
+      if (socket) {
+        try { socket.close(); } catch (_) {}
+      }
+      joystickToken = '';
+      advertised = false;
+      setText(rosStateEl, 'connessione ROSBridge...');
+      socket = new WebSocket(socketUrl);
+      const timeout = window.setTimeout(() => resolve(false), 3500);
+      socket.addEventListener('open', () => {
+        setText(rosStateEl, 'connesso, richiesta joystick...');
+        advertiseJoystick();
+        requestManualControl();
+      });
+      socket.addEventListener('message', (event) => {
+        let data = null;
+        try { data = JSON.parse(event.data); } catch (_) {}
+        const token = data?.values?.joystick_token || data?.result?.joystick_token;
+        if (token) {
+          joystickToken = token;
+          window.clearTimeout(timeout);
+          setText(rosStateEl, 'joystick attivo');
+          resolve(true);
+        }
+      });
+      socket.addEventListener('close', () => {
+        advertised = false;
+        setText(rosStateEl, 'ROSBridge disconnesso');
+      });
+      socket.addEventListener('error', () => {
+        setText(rosStateEl, 'errore ROSBridge');
+        window.clearTimeout(timeout);
+        resolve(false);
+      });
+    });
+  }
+
+  function publishVelocity(linear, angular) {
+    if (!advertised) advertiseJoystick();
+    if (!joystickToken) return false;
+    const ok = rosSend({
+      op: 'publish',
+      topic: '/joystick_vel',
+      msg: {
+        joystick_token: joystickToken,
+        speed_command: {
+          linear: { x: linear, y: 0, z: 0 },
+          angular: { x: 0, y: 0, z: angular },
+        },
+      },
+    });
+    if (ok) setText(commandEl, `linear=${linear.toFixed(3)} angular=${angular.toFixed(3)}`);
+    return ok;
+  }
+
+  function stopRobot() {
+    publishVelocity(0, 0);
+    pid = resetPid();
   }
 
   function ensureCanvas() {
@@ -50,20 +199,14 @@
     return true;
   }
 
-  function guideRect() {
-    const w = overlay.width;
-    const h = overlay.height;
-    return {
-      x: Math.round(w * 0.30),
-      y: Math.round(h * 0.22),
-      w: Math.round(w * 0.40),
-      h: Math.round(h * 0.50),
-    };
-  }
-
   function drawGuide() {
     if (!ensureCanvas()) return;
-    const g = guideRect();
+    const g = {
+      x: Math.round(overlay.width * 0.30),
+      y: Math.round(overlay.height * 0.22),
+      w: Math.round(overlay.width * 0.40),
+      h: Math.round(overlay.height * 0.50),
+    };
     ctx.strokeStyle = 'rgba(59,130,246,0.95)';
     ctx.lineWidth = 4;
     ctx.setLineDash([14, 8]);
@@ -71,9 +214,6 @@
     ctx.setLineDash([]);
     ctx.fillStyle = 'rgba(59,130,246,0.14)';
     ctx.fillRect(g.x, g.y, g.w, g.h);
-    ctx.fillStyle = '#93c5fd';
-    ctx.font = '20px sans-serif';
-    ctx.fillText('INQUADRA QUI L\'APRILTAG', g.x + 10, Math.max(24, g.y - 10));
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -87,80 +227,119 @@
     drawGuide();
     if (!tag) return;
     const pts = tag.corners || [];
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 5;
     if (pts.length === 4) {
-      ctx.strokeStyle = '#22c55e';
-      ctx.lineWidth = 5;
       ctx.beginPath();
       ctx.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
       ctx.closePath();
       ctx.stroke();
     } else {
-      ctx.strokeStyle = '#22c55e';
-      ctx.lineWidth = 5;
       ctx.strokeRect(tag.x, tag.y, tag.w, tag.h);
     }
-    ctx.fillStyle = 'rgba(34,197,94,0.18)';
-    ctx.fillRect(tag.x, tag.y, tag.w, tag.h);
     ctx.fillStyle = '#22c55e';
     ctx.font = '22px sans-serif';
     ctx.fillText(`APRILTAG ID ${tag.id}`, tag.x + 6, Math.max(26, tag.y - 8));
   }
 
-  function updateStats(data) {
-    if (!data || !data.ok) {
-      const msg = (data && data.error) ? data.error : 'errore rilevamento';
-      setText(targetStateEl, msg);
-      setText(suggestionEl, 'stop');
-      setText(commandEl, 'linear=0 angular=0');
-      drawGuide();
-      return;
+  function computePid(command) {
+    const now = performance.now() / 1000;
+    const dt = pid.lastTs ? clamp(now - pid.lastTs, 0.03, 0.30) : 0.10;
+    pid.lastTs = now;
+
+    const desired = number(desiredRatioInput, 18) / 100;
+    const sizeRatio = Number(command.size_ratio);
+    const offset = Number(command.offset_x);
+    if (!Number.isFinite(sizeRatio) || !Number.isFinite(offset)) return { linear: 0, angular: 0 };
+
+    const distanceError = desired - sizeRatio;
+    const offsetError = offset;
+    const distanceDeadband = 0.018;
+    const offsetDeadband = 0.035;
+
+    pid.distanceIntegral = clamp(pid.distanceIntegral + distanceError * dt, -0.35, 0.35);
+    pid.offsetIntegral = clamp(pid.offsetIntegral + offsetError * dt, -0.45, 0.45);
+    const distanceDerivative = (distanceError - pid.distancePrev) / dt;
+    const offsetDerivative = (offsetError - pid.offsetPrev) / dt;
+    pid.distancePrev = distanceError;
+    pid.offsetPrev = offsetError;
+
+    const turbo = turboOverride?.checked ? 1.45 : 1;
+    const maxLinear = number(maxLinearInput, 0.18) * turbo;
+    const maxAngular = number(maxAngularInput, 0.45) * turbo;
+
+    let linear = 0;
+    if (Math.abs(distanceError) > distanceDeadband) {
+      linear =
+        number(pidInputs.linearKp, 1.15) * distanceError +
+        number(pidInputs.linearKi, 0.04) * pid.distanceIntegral +
+        number(pidInputs.linearKd, 0.10) * distanceDerivative;
     }
-    lastTag = data.tag || null;
-    drawTag(lastTag);
-    if (!lastTag) {
-      setText(targetStateEl, selectedTagId === null ? 'nessun AprilTag rilevato: mettilo nel riquadro blu' : `target ID ${selectedTagId} non visibile`);
-    } else {
-      setText(targetStateEl, `rilevato AprilTag ID ${lastTag.id}`);
+
+    let angular = 0;
+    if (Math.abs(offsetError) > offsetDeadband) {
+      angular = -(
+        number(pidInputs.angularKp, 0.95) * offsetError +
+        number(pidInputs.angularKi, 0.02) * pid.offsetIntegral +
+        number(pidInputs.angularKd, 0.16) * offsetDerivative
+      );
     }
-    if (selectedTagId !== null) setText(tagIdEl, selectedTagId);
-    const cmd = data.command || {};
-    setText(offsetEl, cmd.offset_x ?? '-');
-    setText(ratioEl, cmd.size_ratio ?? '-');
-    setText(suggestionEl, cmd.suggestion || 'stop');
-    const mf = data.mission_follow || {};
-    if (mf.action) {
-      const missionLabel = mf.mission_name ? `${mf.action} → ${mf.mission_name}` : mf.action;
-      setText(commandEl, missionLabel);
-    } else {
-      setText(commandEl, cmd.suggestion || 'stop');
-    }
-    if (data.drive_warning) setText(followStateEl, data.drive_warning);
-    else if (followEnabled && data.drive_sent) setText(followStateEl, mf.mission_name ? `micro-missione inviata: ${mf.mission_name}` : 'follow attivo: queue/stop inviato');
-    else setText(followStateEl, followEnabled ? 'follow attivo: in attesa intervallo/isteresi micro-missione' : 'spento');
+
+    linear = clamp(linear, -maxLinear * 0.35, maxLinear);
+    angular = clamp(angular, -maxAngular, maxAngular);
+    return { linear, angular };
   }
 
-  function currentPayload(sendFollow, acquireTarget) {
+  function updateStats(data) {
+    if (!data || !data.ok) {
+      const msg = data?.error || 'errore rilevamento AprilTag';
+      setText(targetStateEl, msg);
+      setText(offsetEl, '-');
+      setText(ratioEl, '-');
+      drawGuide();
+      if (followEnabled && performance.now() - lastSeenAt > 450) stopRobot();
+      return null;
+    }
+    const tag = data.tag || null;
+    drawTag(tag);
+    if (!tag) {
+      setText(targetStateEl, selectedTagId === null ? 'nessun AprilTag rilevato' : `AprilTag ID ${selectedTagId} non visibile`);
+      if (followEnabled && performance.now() - lastSeenAt > 450) stopRobot();
+      return null;
+    }
+    lastSeenAt = performance.now();
+    if (selectedTagId !== null) setText(tagIdEl, selectedTagId);
+    const cmd = data.command || {};
+    setText(targetStateEl, `rilevato AprilTag ID ${tag.id}`);
+    setText(offsetEl, cmd.offset_x ?? '-');
+    setText(ratioEl, cmd.size_ratio ?? '-');
+    return cmd;
+  }
+
+  function currentPayload(acquireTarget) {
+    const streamUrl = (streamUrlInput?.value || '').trim();
+    const streamIsVideo = /^(rtsp|rtmp):\/\//i.test(streamUrl) || /\/(stream|mjpeg|mjpg|video|video_feed)\b/i.test(streamUrl) || /[?&]action=stream/i.test(streamUrl);
     return {
-      stream_url: (streamUrlInput?.value || '').trim(),
-      snapshot_url: (snapshotUrlInput?.value || '').trim(),
-      follow_enabled: !!sendFollow,
+      stream_url: streamUrl,
+      snapshot_url: streamIsVideo ? '' : (snapshotUrlInput?.value || '').trim(),
       acquire_target: !!acquireTarget,
       target_id: selectedTagId,
-      desired_size_ratio: Number(desiredRatioInput?.value || 18) / 100.0,
-      max_linear: Number(maxLinearInput?.value || 0.10),
-      max_angular: Number(maxAngularInput?.value || 0.30),
+      desired_size_ratio: number(desiredRatioInput, 18) / 100,
+      max_linear: number(maxLinearInput, 0.18),
+      max_angular: number(maxAngularInput, 0.45),
+      max_detect_width: 640,
     };
   }
 
-  async function tagStep(sendFollow, acquireTarget) {
-    if (busy) return;
+  async function tagStep(acquireTarget) {
+    if (busy) return null;
     busy = true;
     try {
       const res = await fetch('/api/tracking/apriltag-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(currentPayload(sendFollow, acquireTarget)),
+        body: JSON.stringify(currentPayload(acquireTarget)),
       });
       const text = await res.text();
       let data;
@@ -169,112 +348,94 @@
         selectedTagId = data.acquired_tag_id;
         setText(tagIdEl, selectedTagId);
       }
-      updateStats(data);
-      return data;
+      return updateStats(data);
     } catch (err) {
-      const msg = `errore chiamata backend: ${err}`;
-      setText(targetStateEl, msg);
-      setText(followStateEl, msg);
+      setText(targetStateEl, `errore chiamata backend: ${err}`);
       drawGuide();
+      return null;
     } finally {
       busy = false;
     }
   }
 
   function connectStream() {
-  const url = (streamUrlInput?.value || '').trim();
-  if (!url) {
-    setText(streamStateEl, 'manca URL stream');
-    return;
-  }
-
-  // RTSP/RTMP: nessuna anteprima browser, usa solo il backend
-  if (/^(rtsp|rtmp):\/\//i.test(url)) {
-    setText(streamStateEl, 'stream RTSP/RTMP usato dal backend; anteprima browser non disponibile');
-    drawGuide();
-    return;
-  }
-
-  if (!streamImg) return;
-
-  // Determina se è uno stream MJPEG continuo o uno snapshot statico
-  const isMjpeg =
-    /\/(stream|mjpeg|mjpg|video|video_feed)\b/i.test(url) ||
-    /[?&]action=stream/i.test(url);
-
-  setText(streamStateEl, 'connessione stream...');
-
-  if (isMjpeg) {
-    // Per MJPEG il browser gestisce il multipart in modo nativo tramite <img>.
-    // NON aggiungere cache-busting: spezzerebbe il flusso multipart.
-    streamImg.onerror = () => { setText(streamStateEl, 'errore stream MJPEG'); };
-    streamImg.onload = () => {
-      setText(streamStateEl, 'stream MJPEG live connesso');
-      drawGuide();
-    };
-    streamImg.src = url;
-  } else {
-    // Snapshot statico (es. /snapshot.jpg): aggiunge cache-busting per forzare aggiornamento
-    streamImg.onerror = () => { setText(streamStateEl, 'errore snapshot'); };
-    streamImg.onload = () => {
-      setText(streamStateEl, 'snapshot connesso');
-      drawGuide();
-    };
-    streamImg.src = `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
-  }
-
-  setTimeout(drawGuide, 600);
-}
-
-  async function detectTag() {
-    followEnabled = false;
-    if (followTimer) clearTimeout(followTimer);
-    followTimer = null;
-    selectedTagId = null;
-    setText(followStateEl, 'riconoscimento AprilTag in corso...');
-    setText(targetStateEl, 'mettiti nel riquadro blu con il tag ben visibile...');
-    drawGuide();
-    await tagStep(false, true);
-  }
-
-  function startFollow() {
-    if (selectedTagId === null) {
-      setText(followStateEl, 'prima premi “Riconosci AprilTag” e acquisisci il target');
+    const url = (streamUrlInput?.value || '').trim();
+    if (!url) {
+      setText(streamStateEl, 'manca URL stream');
+      return;
+    }
+    if (/^(rtsp|rtmp):\/\//i.test(url)) {
+      setText(streamStateEl, 'stream usato dal backend; anteprima browser non disponibile');
       drawGuide();
       return;
     }
+    const isMjpeg = /\/(stream|mjpeg|mjpg|video|video_feed)\b/i.test(url) || /[?&]action=stream/i.test(url);
+    streamImg.onerror = () => setText(streamStateEl, isMjpeg ? 'errore stream MJPEG' : 'errore snapshot');
+    streamImg.onload = () => {
+      setText(streamStateEl, isMjpeg ? 'stream MJPEG live connesso' : 'snapshot connesso');
+      drawGuide();
+    };
+    streamImg.src = isMjpeg ? url : `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    setTimeout(drawGuide, 600);
+  }
+
+  async function detectTag() {
+    followEnabled = false;
+    window.clearTimeout(followTimer);
+    selectedTagId = null;
+    pid = resetPid();
+    setText(tagIdEl, '-');
+    setText(followStateEl, 'riconoscimento AprilTag...');
+    await tagStep(true);
+  }
+
+  async function startFollow() {
+    if (selectedTagId === null) {
+      setText(followStateEl, 'prima premi Riconosci AprilTag');
+      drawGuide();
+      return;
+    }
+    const ok = await ensureRosBridge();
+    if (!ok) {
+      setText(followStateEl, 'ROSBridge non pronto');
+      return;
+    }
     followEnabled = true;
-    setText(followStateEl, `follow avviato su AprilTag ID ${selectedTagId}`);
-    if (followTimer) clearTimeout(followTimer);
+    pid = resetPid();
+    lastSeenAt = performance.now();
+    setText(followStateEl, `PID attivo su AprilTag ID ${selectedTagId}`);
     followLoop();
   }
 
   async function followLoop() {
     if (!followEnabled) return;
     const started = performance.now();
-    await tagStep(true, false).catch(() => {});
-    if (!followEnabled) return;
+    const cmd = await tagStep(false);
+    if (followEnabled && cmd) {
+      const out = computePid(cmd);
+      publishVelocity(out.linear, out.angular);
+    }
     const elapsed = performance.now() - started;
-    followTimer = setTimeout(followLoop, Math.max(80, followDelayMs - elapsed));
+    followTimer = window.setTimeout(followLoop, Math.max(35, 95 - elapsed));
   }
 
-  async function stopFollow() {
+  function stopFollow() {
     followEnabled = false;
-    if (followTimer) clearTimeout(followTimer);
-    followTimer = null;
-    setText(followStateEl, 'arresto follow...');
-    try {
-      const res = await fetch('/api/tracking/stop', { method: 'POST' });
-      const data = await res.json().catch(() => ({}));
-      setText(followStateEl, data.ok ? 'spento: queue pulita / follow_stop inviato' : (data.error || 'spento')); 
-    } catch (err) {
-      setText(followStateEl, `spento, errore stop: ${err}`);
-    }
+    window.clearTimeout(followTimer);
+    stopRobot();
+    setText(followStateEl, 'spento');
+  }
+
+  function applySpeedProfile(button) {
+    document.querySelectorAll('.tracking-speed-profile').forEach((el) => el.classList.remove('active'));
+    button.classList.add('active');
+    maxLinearInput.value = button.dataset.linear || maxLinearInput.value;
+    maxAngularInput.value = button.dataset.angular || maxAngularInput.value;
   }
 
   clearBtn?.addEventListener('click', () => {
     selectedTagId = null;
-    lastTag = null;
+    pid = resetPid();
     setText(tagIdEl, '-');
     setText(targetStateEl, 'target rimosso');
     drawGuide();
@@ -284,6 +445,9 @@
   startFollowBtn?.addEventListener('click', startFollow);
   stopFollowBtn?.addEventListener('click', stopFollow);
   desiredRatioInput?.addEventListener('input', updateTargetSizeLabel);
+  document.querySelectorAll('.tracking-speed-profile').forEach((button) => {
+    button.addEventListener('click', () => applySpeedProfile(button));
+  });
   updateTargetSizeLabel();
   setText(followStateEl, 'pronto');
   drawGuide();

@@ -20,31 +20,25 @@
 
     <hr class="sep">
     <h2>Telefono come camera IP</h2>
-    <p class="note">Inserisci l'URL video generato dall'app sul telefono. HTTP/MJPEG funziona anche come anteprima nel browser; RTSP/RTMP viene usato dal backend per leggere i frame AprilTag.</p>
+    <p class="note">Usa preferibilmente HTTP/MJPEG diretto, ad esempio http://IP_TELEFONO:8080/video. Se usi MJPEG puoi lasciare vuoto lo snapshot.</p>
     <label>Stream URL telefono
-      <input name="camera_stream_url" value="{{ settings.camera_stream_url }}" placeholder="rtsp://IP_TELEFONO:8554/live oppure http://IP_TELEFONO:8080/video">
+      <input name="camera_stream_url" value="{{ settings.camera_stream_url }}" placeholder="http://IP_TELEFONO:8080/video">
     </label>
     <label>Snapshot URL opzionale
       <input name="camera_snapshot_url" value="{{ settings.camera_snapshot_url }}" placeholder="http://IP_TELEFONO:8080/shot.jpg">
     </label>
 
     <hr class="sep">
-    <h2>Follow AprilTag tramite micro-missioni MiR</h2>
-    <p class="note">Il MiR non espone un endpoint REST di joystick/velocity. Il follow usa quindi missioni brevi già create sul robot. Puoi inserire il nome missione oppure il GUID.</p>
-    <label>Missione avanti
-      <input name="follow_forward_mission" value="{{ settings.follow_forward_mission or 'follow_avanti' }}" placeholder="follow_avanti">
+    <h2>Tracking AprilTag via joystick ROSBridge</h2>
+    <p class="note">Velocita lente per il PID automatico. Aumenta la dimensione target se vuoi che il MiR arrivi piu vicino al tag.</p>
+    <label>Dimensione target desiderata, percentuale frame
+      <input name="tracking_target_size_percent" value="{{ settings.tracking_target_size_percent or '32' }}" placeholder="32">
     </label>
-    <label>Missione sinistra
-      <input name="follow_left_mission" value="{{ settings.follow_left_mission or 'follow_sinistra' }}" placeholder="follow_sinistra">
+    <label>Velocita lineare massima tracking
+      <input name="tracking_max_linear" value="{{ settings.tracking_max_linear or '0.08' }}" placeholder="0.08">
     </label>
-    <label>Missione destra
-      <input name="follow_right_mission" value="{{ settings.follow_right_mission or 'follow_destra' }}" placeholder="follow_destra">
-    </label>
-    <label>Missione stop
-      <input name="follow_stop_mission" value="{{ settings.follow_stop_mission or 'follow_stop' }}" placeholder="follow_stop">
-    </label>
-    <label>Intervallo minimo tra micro-missioni, secondi
-      <input name="follow_min_interval_seconds" value="{{ settings.follow_min_interval_seconds or '0.45' }}" placeholder="0.45">
+    <label>Velocita angolare massima tracking
+      <input name="tracking_max_angular" value="{{ settings.tracking_max_angular or '0.22' }}" placeholder="0.22">
     </label>
 
     <input type="hidden" name="drive_endpoint_path" value="">

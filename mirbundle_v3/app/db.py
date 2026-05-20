@@ -24,11 +24,9 @@ DEFAULT_SETTINGS = {
     'manual_release_endpoint_path': '',
     'manual_release_http_method': 'PUT',
     'manual_release_body_template': '{"state_id": 3}',
-    'follow_forward_mission': 'follow_avanti',
-    'follow_left_mission': 'follow_sinistra',
-    'follow_right_mission': 'follow_destra',
-    'follow_stop_mission': 'follow_stop',
-    'follow_min_interval_seconds': '0.45',
+    'tracking_target_size_percent': '32',
+    'tracking_max_linear': '0.08',
+    'tracking_max_angular': '0.22',
 }
 
 
@@ -71,11 +69,9 @@ def init_db() -> None:
         _ensure_column(conn, 'settings', 'manual_release_endpoint_path', 'TEXT', "''")
         _ensure_column(conn, 'settings', 'manual_release_http_method', 'TEXT', "'PUT'")
         _ensure_column(conn, 'settings', 'manual_release_body_template', 'TEXT', "'{\"state_id\": 3}'")
-        _ensure_column(conn, 'settings', 'follow_forward_mission', 'TEXT', "'follow_avanti'")
-        _ensure_column(conn, 'settings', 'follow_left_mission', 'TEXT', "'follow_sinistra'")
-        _ensure_column(conn, 'settings', 'follow_right_mission', 'TEXT', "'follow_destra'")
-        _ensure_column(conn, 'settings', 'follow_stop_mission', 'TEXT', "'follow_stop'")
-        _ensure_column(conn, 'settings', 'follow_min_interval_seconds', 'TEXT', "'0.45'")
+        _ensure_column(conn, 'settings', 'tracking_target_size_percent', 'TEXT', "'32'")
+        _ensure_column(conn, 'settings', 'tracking_max_linear', 'TEXT', "'0.08'")
+        _ensure_column(conn, 'settings', 'tracking_max_angular', 'TEXT', "'0.22'")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workflows (
@@ -109,8 +105,6 @@ def get_settings() -> dict:
             data.setdefault(key, value)
         data['camera_stream_url'] = data.get('camera_stream_url') or DEFAULT_SETTINGS['camera_stream_url']
         data['camera_snapshot_url'] = data.get('camera_snapshot_url') or DEFAULT_SETTINGS['camera_snapshot_url']
-        if str(data.get('follow_min_interval_seconds') or '').strip() in {'', '1.4', '2.0'}:
-            data['follow_min_interval_seconds'] = DEFAULT_SETTINGS['follow_min_interval_seconds']
         return data
 
 
@@ -130,11 +124,9 @@ def save_settings(
     manual_release_endpoint_path: str = '',
     manual_release_http_method: str = 'PUT',
     manual_release_body_template: str = '{"state_id": 3}',
-    follow_forward_mission: str = 'follow_avanti',
-    follow_left_mission: str = 'follow_sinistra',
-    follow_right_mission: str = 'follow_destra',
-    follow_stop_mission: str = 'follow_stop',
-    follow_min_interval_seconds: str = '0.45',
+    tracking_target_size_percent: str = '32',
+    tracking_max_linear: str = '0.08',
+    tracking_max_angular: str = '0.22',
 ) -> None:
     with get_conn() as conn:
         conn.execute(
@@ -145,8 +137,7 @@ def save_settings(
                 camera_stream_url = ?, camera_snapshot_url = ?,
                 manual_take_endpoint_path = ?, manual_take_http_method = ?, manual_take_body_template = ?,
                 manual_release_endpoint_path = ?, manual_release_http_method = ?, manual_release_body_template = ?,
-                follow_forward_mission = ?, follow_left_mission = ?, follow_right_mission = ?, follow_stop_mission = ?,
-                follow_min_interval_seconds = ?
+                tracking_target_size_percent = ?, tracking_max_linear = ?, tracking_max_angular = ?
             WHERE id = 1
             """,
             (
@@ -165,11 +156,9 @@ def save_settings(
                 manual_release_endpoint_path.strip().lstrip('/'),
                 manual_release_http_method.strip().upper() or 'PUT',
                 manual_release_body_template.strip() or DEFAULT_SETTINGS['manual_release_body_template'],
-                follow_forward_mission.strip() or DEFAULT_SETTINGS['follow_forward_mission'],
-                follow_left_mission.strip() or DEFAULT_SETTINGS['follow_left_mission'],
-                follow_right_mission.strip() or DEFAULT_SETTINGS['follow_right_mission'],
-                follow_stop_mission.strip() or DEFAULT_SETTINGS['follow_stop_mission'],
-                follow_min_interval_seconds.strip() or DEFAULT_SETTINGS['follow_min_interval_seconds'],
+                tracking_target_size_percent.strip() or DEFAULT_SETTINGS['tracking_target_size_percent'],
+                tracking_max_linear.strip() or DEFAULT_SETTINGS['tracking_max_linear'],
+                tracking_max_angular.strip() or DEFAULT_SETTINGS['tracking_max_angular'],
             ),
         )
 

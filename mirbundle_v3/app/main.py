@@ -95,11 +95,9 @@ def save_settings(
     manual_release_endpoint_path: str = Form(''),
     manual_release_http_method: str = Form('PUT'),
     manual_release_body_template: str = Form('{"state_id": 3}'),
-    follow_forward_mission: str = Form('follow_avanti'),
-    follow_left_mission: str = Form('follow_sinistra'),
-    follow_right_mission: str = Form('follow_destra'),
-    follow_stop_mission: str = Form('follow_stop'),
-    follow_min_interval_seconds: str = Form('0.45'),
+    tracking_target_size_percent: str = Form('32'),
+    tracking_max_linear: str = Form('0.08'),
+    tracking_max_angular: str = Form('0.22'),
 ):
     db.save_settings(
         host,
@@ -117,11 +115,9 @@ def save_settings(
         manual_release_endpoint_path,
         manual_release_http_method,
         manual_release_body_template,
-        follow_forward_mission,
-        follow_left_mission,
-        follow_right_mission,
-        follow_stop_mission,
-        follow_min_interval_seconds,
+        tracking_target_size_percent,
+        tracking_max_linear,
+        tracking_max_angular,
     )
     return redirect('/settings?message=Configurazione salvata')
 
@@ -293,146 +289,6 @@ def joystick_lab_page(request: Request):
     return render(request, 'joystick_lab.html')
 
 
-# Stato leggero in memoria per rendere il follow più fluido.
-# Evita di accodare micro-missioni diverse a ogni frame quando l'AprilTag vibra
-# vicino alla soglia sinistra/destra/avanti.
-_FOLLOW_STATE: dict[str, Any] = {
-    'sent_action': None,
-    'sent_ts': 0.0,
-    'pending_action': None,
-    'pending_count': 0,
-    'last_seen_ts': 0.0,
-}
-
-
-def _norm_name(value: str) -> str:
-    return (value or '').strip().lower().replace(' ', '_')
-
-
-async def _find_mission_id_by_name_or_guid(client, name_or_guid: str) -> tuple[str, str]:
-    wanted = (name_or_guid or '').strip()
-    if not wanted:
-        raise RuntimeError('Missione follow non configurata in Settings.')
-    # Se l'utente inserisce già un GUID, prova a usarlo direttamente; altrimenti cerca per nome.
-    missions = await client.get_all_missions()
-    wanted_norm = _norm_name(wanted)
-    for mission in missions:
-        if str(mission.get('guid', '')).strip() == wanted:
-            return str(mission.get('guid')), str(mission.get('name') or wanted)
-    for mission in missions:
-        if _norm_name(str(mission.get('name', ''))) == wanted_norm:
-            return str(mission.get('guid')), str(mission.get('name') or wanted)
-    available = ', '.join(str(m.get('name', '?')) for m in missions[:30])
-    raise RuntimeError(f'Missione follow non trovata: {wanted}. Missioni disponibili: {available}')
-
-
-def _decide_follow_mission(command: dict[str, Any], desired_size_ratio: float) -> str:
-    """Decisione più stabile per micro-missioni.
-
-    Restituisce: avanti, sinistra, destra, stop oppure none.
-    - none = non inviare nulla, mantieni la situazione corrente.
-    - usa isteresi: una correzione laterale parte solo se il tag è davvero decentrato.
-    - stop viene usato solo quando la distanza è corretta o il tag è perso da un po'.
-    """
-    offset = command.get('offset_x')
-    size_ratio = command.get('size_ratio')
-    now = time.time()
-
-    if offset is None or size_ratio is None:
-        # Non fermare al primo frame perso: lo snapshot può saltare per un istante.
-        last_seen = float(_FOLLOW_STATE.get('last_seen_ts') or 0.0)
-        if now - last_seen < 0.7:
-            return 'none'
-        return 'stop'
-
-    _FOLLOW_STATE['last_seen_ts'] = now
-    offset = float(offset)
-    size_ratio = float(size_ratio)
-    abs_offset = abs(offset)
-
-    # Isteresi laterale: soglia alta per iniziare, soglia bassa per smettere.
-    previous = _FOLLOW_STATE.get('sent_action')
-    lateral_enter = 0.24
-    lateral_exit = 0.12
-
-    if previous == 'sinistra' and offset < -lateral_exit:
-        return 'sinistra'
-    if previous == 'destra' and offset > lateral_exit:
-        return 'destra'
-
-    if offset > lateral_enter:
-        return 'destra'
-    if offset < -lateral_enter:
-        return 'sinistra'
-
-    # Avanza solo se il tag è abbastanza centrato: evita avanti+curve a scatti.
-    too_far_margin = 0.035
-    if abs_offset < 0.30 and size_ratio < max(0.05, desired_size_ratio - too_far_margin):
-        return 'avanti'
-
-    # Se è quasi centrato e alla distanza giusta, stop morbido.
-    if abs_offset < 0.18 and size_ratio >= desired_size_ratio - too_far_margin:
-        return 'stop'
-
-    # Zona morta: non cambiare comando.
-    return 'none'
-
-
-async def _run_follow_micro_mission(action: str, settings: dict[str, Any]) -> dict[str, Any]:
-    client = get_client()
-    if action == 'none':
-        return {'sent': False, 'action': action, 'reason': 'zona morta: nessuna nuova micro-missione'}
-
-    action_to_setting = {
-        'avanti': 'follow_forward_mission',
-        'sinistra': 'follow_left_mission',
-        'destra': 'follow_right_mission',
-        'stop': 'follow_stop_mission',
-    }
-    mission_setting = action_to_setting.get(action, 'follow_stop_mission')
-    mission_name_or_guid = str(settings.get(mission_setting, '')).strip()
-    now = time.time()
-    try:
-        interval = float(settings.get('follow_min_interval_seconds') or 0.45)
-    except Exception:
-        interval = 0.45
-    interval = max(0.25, min(interval, 0.8))
-
-    # Debounce: la stessa decisione deve comparire per più frame prima di inviare.
-    # Rende il robot più fluido perché evita sinistra/destra/stop dovuti a jitter.
-    stable_required = 1
-    if _FOLLOW_STATE.get('pending_action') == action:
-        _FOLLOW_STATE['pending_count'] = int(_FOLLOW_STATE.get('pending_count') or 0) + 1
-    else:
-        _FOLLOW_STATE['pending_action'] = action
-        _FOLLOW_STATE['pending_count'] = 1
-
-    if int(_FOLLOW_STATE.get('pending_count') or 0) < stable_required:
-        return {'sent': False, 'action': action, 'reason': f'attendo conferma comando stabile ({_FOLLOW_STATE["pending_count"]}/{stable_required})'}
-
-    # Non riaccodare sempre la stessa missione.
-    if _FOLLOW_STATE.get('sent_action') == action and now - float(_FOLLOW_STATE.get('sent_ts') or 0.0) < interval:
-        return {'sent': False, 'action': action, 'reason': f'attesa intervallo {interval}s'}
-
-    # Se ho già mandato stop da poco, non continuare a pulire la queue.
-    if action == 'stop' and _FOLLOW_STATE.get('sent_action') == 'stop' and now - float(_FOLLOW_STATE.get('sent_ts') or 0.0) < max(interval, 2.0):
-        return {'sent': False, 'action': action, 'reason': 'stop già inviato'}
-
-    try:
-        await client.clear_queue()
-    except Exception:
-        pass
-
-    if action == 'stop' and not mission_name_or_guid:
-        _FOLLOW_STATE.update({'sent_action': action, 'sent_ts': now})
-        return {'sent': True, 'action': action, 'mission': None, 'result': 'queue cancellata'}
-
-    mission_id, mission_name = await _find_mission_id_by_name_or_guid(client, mission_name_or_guid)
-    result = await client.enqueue_mission(mission_id)
-    _FOLLOW_STATE.update({'sent_action': action, 'sent_ts': now})
-    return {'sent': True, 'action': action, 'mission_id': mission_id, 'mission_name': mission_name, 'result': result}
-
-
 # ---------------- Tracking AprilTag + follow ----------------
 def _load_cv2():
     try:
@@ -584,6 +440,8 @@ async def _download_snapshot(url: str, stream_url: str = '') -> bytes:
     candidates: list[str] = []
     snapshot = url.strip()
     stream = stream_url.strip()
+    if stream and _is_video_stream_url(stream):
+        return await asyncio.to_thread(_capture_frame_from_stream, stream)
     if snapshot:
         if _is_video_stream_url(snapshot):
             return await asyncio.to_thread(_capture_frame_from_stream, snapshot)
@@ -614,14 +472,25 @@ async def _download_snapshot(url: str, stream_url: str = '') -> bytes:
     raise RuntimeError('Snapshot camera non raggiungibile. Provati: ' + ' | '.join(errors))
 
 
-def _detect_apriltags_from_jpeg(image_bytes: bytes, target_id: int | None = None, acquire_target: bool = False) -> dict[str, Any]:
+def _detect_apriltags_from_jpeg(
+    image_bytes: bytes,
+    target_id: int | None = None,
+    acquire_target: bool = False,
+    max_detect_width: int = 640,
+) -> dict[str, Any]:
     cv2, np = _load_cv2()
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
     frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if frame is None:
         raise RuntimeError('Impossibile decodificare snapshot camera.')
     height, width = frame.shape[:2]
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    detect_frame = frame
+    scale = 1.0
+    if max_detect_width > 0 and width > max_detect_width:
+        scale = width / float(max_detect_width)
+        detect_height = max(1, int(round(height / scale)))
+        detect_frame = cv2.resize(frame, (max_detect_width, detect_height), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2GRAY)
 
     if not hasattr(cv2, 'aruco'):
         raise RuntimeError('Modulo AprilTag non disponibile. Installa: pip install opencv-contrib-python-headless')
@@ -641,7 +510,7 @@ def _detect_apriltags_from_jpeg(image_bytes: bytes, target_id: int | None = None
         if ids is None or len(ids) == 0:
             continue
         for i, marker_corners in enumerate(corners):
-            pts = marker_corners.reshape((4, 2)).astype(float)
+            pts = marker_corners.reshape((4, 2)).astype(float) * scale
             xs = pts[:, 0]
             ys = pts[:, 1]
             x = int(xs.min())
@@ -699,7 +568,7 @@ def _detect_apriltags_from_jpeg(image_bytes: bytes, target_id: int | None = None
     }
 
 
-def _compute_tag_follow_command(tag: dict[str, Any] | None, width: int, height: int, desired_size_ratio: float, max_linear: float, max_angular: float) -> dict[str, Any]:
+def _compute_tag_tracking_command(tag: dict[str, Any] | None, width: int, height: int, desired_size_ratio: float, max_linear: float, max_angular: float) -> dict[str, Any]:
     if not tag or not width or not height:
         return {'linear': 0.0, 'angular': 0.0, 'suggestion': 'AprilTag non rilevato: stop', 'offset_x': None, 'size_ratio': None}
     offset = (float(tag['cx']) - width / 2.0) / (width / 2.0)
@@ -738,7 +607,6 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
     settings = db.get_settings()
     snapshot_url = str(payload.get('snapshot_url') or settings.get('camera_snapshot_url') or '').strip()
     stream_url = str(payload.get('stream_url') or settings.get('camera_stream_url') or '').strip()
-    follow_enabled = bool(payload.get('follow_enabled', False))
     acquire_target = bool(payload.get('acquire_target', False))
     target_id_raw = payload.get('target_id', None)
     target_id: int | None = None
@@ -750,48 +618,26 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
     desired_size_ratio = float(payload.get('desired_size_ratio') or 0.18)
     max_linear = float(payload.get('max_linear') or 0.12)
     max_angular = float(payload.get('max_angular') or 0.35)
-    result: dict[str, Any] = {'ok': False, 'follow_enabled': follow_enabled, 'target_id': target_id}
+    max_detect_width = int(payload.get('max_detect_width') or 640)
+    result: dict[str, Any] = {'ok': False, 'target_id': target_id}
     try:
         image = await _download_snapshot(snapshot_url, stream_url)
-        detection = _detect_apriltags_from_jpeg(image, target_id=target_id, acquire_target=acquire_target)
-        command = _compute_tag_follow_command(detection['tag'], detection['width'], detection['height'], desired_size_ratio, max_linear, max_angular)
+        detection = _detect_apriltags_from_jpeg(
+            image,
+            target_id=target_id,
+            acquire_target=acquire_target,
+            max_detect_width=max_detect_width,
+        )
+        command = _compute_tag_tracking_command(detection['tag'], detection['width'], detection['height'], desired_size_ratio, max_linear, max_angular)
         result.update({'ok': True, **detection, 'command': command})
-        if follow_enabled:
-            action = _decide_follow_mission(command, desired_size_ratio)
-            mission_result = await _run_follow_micro_mission(action, settings)
-            result['mission_follow'] = mission_result
-            result['drive_sent'] = bool(mission_result.get('sent'))
-            result['drive_warning'] = '' if mission_result.get('sent') else str(mission_result.get('reason', 'micro-missione non inviata'))
         return result
     except Exception as exc:
-        if follow_enabled:
-            try:
-                stop_res = await _run_follow_micro_mission('stop', settings)
-                return {'ok': False, 'error': str(exc), 'mission_follow': stop_res, 'command': {'linear': 0.0, 'angular': 0.0, 'suggestion': 'errore: stop'}}
-            except Exception:
-                pass
         return {'ok': False, 'error': str(exc), 'command': {'linear': 0.0, 'angular': 0.0, 'suggestion': 'errore: stop'}}
-
-
-# Compatibilità: se una vecchia pagina chiama ancora person-step, usa lo stesso motore AprilTag.
-@app.post('/api/tracking/person-step')
-async def tracking_person_step(payload: dict[str, Any] = Body(default_factory=dict)):
-    return await tracking_apriltag_step(payload)
 
 
 @app.post('/api/tracking/stop')
 async def tracking_stop():
-    settings = db.get_settings()
-    try:
-        result = await _run_follow_micro_mission('stop', settings)
-        return {'ok': True, 'message': 'Stop tracking inviato', 'mission_follow': result}
-    except Exception as exc:
-        try:
-            client = get_client()
-            await client.clear_queue()
-            return {'ok': True, 'message': f'Queue cancellata. Nota: {exc}'}
-        except Exception as exc2:
-            return {'ok': False, 'error': f'{exc}; clear_queue fallita: {exc2}'}
+    return {'ok': True, 'message': 'Stop tracking gestito via joystick ROSBridge dal browser.'}
 
 
 @app.get('/health')
