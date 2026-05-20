@@ -20,37 +20,39 @@
     </label>
   </div>
   <div class="row wrap">
-    <button class="btn" id="buildSocketBtn" type="button">Prepara URL</button>
-    <button class="btn" id="connectRosBtn" type="button">Connetti</button>
-    <button class="btn" id="manualRosBtn" type="button">Manual control</button>
-    <button class="btn warn" id="advertiseRosBtn" type="button">Advertise topic</button>
+    <button class="btn success" id="connectRosBtn" type="button">Connetti e prendi controllo</button>
     <button class="btn danger" id="disconnectRosBtn" type="button">Disconnetti</button>
   </div>
-  <p class="note">Pagina sperimentale: parla direttamente con ROSBridge e mostra i frame ricevuti. Usa velocità basse finché non vediamo il token e lo stop funzionare.</p>
+  <p class="note">La pagina prepara automaticamente URL, sessione, advertise e richiesta manual control. Il token viene compilato appena il MiR lo restituisce.</p>
 </section>
 
 <section class="card">
-  <h2>Comando velocità</h2>
+  <h2>Comando velocita</h2>
+  <div class="row wrap">
+    <button class="btn ros-speed-profile active" data-linear="0.10" data-angular="0.28" type="button">Normale</button>
+    <button class="btn ros-speed-profile" data-linear="0.18" data-angular="0.45" type="button">Veloce</button>
+    <label class="inline-check"><input id="rosTurboOverride" type="checkbox"> Override turbo</label>
+  </div>
   <div class="grid two">
     <div class="stack">
       <label>Lineare max
-        <input id="rosLinearSpeed" type="range" min="0.01" max="0.20" step="0.01" value="0.06">
+        <input id="rosLinearSpeed" type="range" min="0.02" max="0.45" step="0.01" value="0.10">
       </label>
-      <div class="row small"><span>linear.x</span><strong id="rosLinearValue">0.06</strong></div>
+      <div class="row small"><span>linear.x</span><strong id="rosLinearValue">0.10</strong></div>
     </div>
     <div class="stack">
       <label>Angolare max
-        <input id="rosAngularSpeed" type="range" min="0.05" max="0.50" step="0.01" value="0.18">
+        <input id="rosAngularSpeed" type="range" min="0.08" max="1.00" step="0.01" value="0.28">
       </label>
-      <div class="row small"><span>angular.z</span><strong id="rosAngularValue">0.18</strong></div>
+      <div class="row small"><span>angular.z</span><strong id="rosAngularValue">0.28</strong></div>
     </div>
   </div>
   <div class="drive-pad joystick-lab-pad">
     <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="0" id="rosStopCenter">STOP</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="1" data-angular="0" id="rosForward">▲</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="-1" data-angular="0" id="rosBackward">▼</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="1" id="rosLeft">◀</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="-1" id="rosRight">▶</button>
+    <button class="btn drive-btn ros-drive-btn" data-linear="1" data-angular="0" id="rosForward">UP</button>
+    <button class="btn drive-btn ros-drive-btn" data-linear="-1" data-angular="0" id="rosBackward">DOWN</button>
+    <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="1" id="rosLeft">LEFT</button>
+    <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="-1" id="rosRight">RIGHT</button>
   </div>
   <div class="row wrap">
     <button class="btn danger" id="rosStopBtn" type="button">Stop publish</button>
@@ -69,5 +71,5 @@
   <pre id="rosLog">Pronto.</pre>
 </section>
 
-<script src="/static/joystick_lab.js?v=rosbridge-lab-1"></script>
+<script src="/static/joystick_lab.js?v=rosbridge-lab-2"></script>
 {% endblock %}

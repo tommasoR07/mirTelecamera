@@ -12,6 +12,7 @@
   const angularInput = $('rosAngularSpeed');
   const linearValue = $('rosLinearValue');
   const angularValue = $('rosAngularValue');
+  const turboOverride = $('rosTurboOverride');
 
   let socket = null;
   let connected = false;
@@ -62,20 +63,19 @@
   }
 
   function connect() {
+    buildSocketUrl();
     const url = (socketUrlInput.value || '').trim();
-    if (!url) {
-      buildSocketUrl();
-      if (!socketUrlInput.value.trim()) return;
-    }
+    if (!url) return;
     disconnect(false);
     setText(stateEl, 'connessione...');
     advertised = false;
-    socket = new WebSocket(socketUrlInput.value.trim());
+    socket = new WebSocket(url);
     socket.addEventListener('open', () => {
       connected = true;
-      setText(stateEl, 'connesso');
+      setText(stateEl, 'connesso, richiesta manual control...');
       log('WebSocket aperto');
       advertise();
+      requestManualControl();
     });
     socket.addEventListener('message', (event) => {
       let data = event.data;
@@ -121,7 +121,7 @@
   }
 
   function requestManualControl() {
-    if (!connected) connect();
+    if (!connected) return;
     const webSessionId = (sessionInput.value || '').trim() || `aruco_tracker_${Date.now()}`;
     sessionInput.value = webSessionId;
     send({
@@ -137,9 +137,10 @@
   }
 
   function values(linearScale, angularScale) {
+    const multiplier = turboOverride?.checked ? 1.75 : 1;
     return {
-      linear: Number((Number(linearInput.value || 0) * linearScale).toFixed(4)),
-      angular: Number((Number(angularInput.value || 0) * angularScale).toFixed(4)),
+      linear: Number((Number(linearInput.value || 0) * multiplier * linearScale).toFixed(4)),
+      angular: Number((Number(angularInput.value || 0) * multiplier * angularScale).toFixed(4)),
     };
   }
 
@@ -205,22 +206,32 @@
   }
 
   function updateLabels() {
-    setText(linearValue, Number(linearInput.value || 0).toFixed(2));
-    setText(angularValue, Number(angularInput.value || 0).toFixed(2));
+    const multiplier = turboOverride?.checked ? 1.75 : 1;
+    setText(linearValue, `${(Number(linearInput.value || 0) * multiplier).toFixed(2)}${multiplier > 1 ? ' turbo' : ''}`);
+    setText(angularValue, `${(Number(angularInput.value || 0) * multiplier).toFixed(2)}${multiplier > 1 ? ' turbo' : ''}`);
   }
 
-  $('buildSocketBtn')?.addEventListener('click', buildSocketUrl);
+  function applySpeedProfile(button) {
+    document.querySelectorAll('.ros-speed-profile').forEach((el) => el.classList.remove('active'));
+    button.classList.add('active');
+    linearInput.value = button.dataset.linear || linearInput.value;
+    angularInput.value = button.dataset.angular || angularInput.value;
+    updateLabels();
+  }
+
   $('connectRosBtn')?.addEventListener('click', connect);
-  $('manualRosBtn')?.addEventListener('click', requestManualControl);
-  $('advertiseRosBtn')?.addEventListener('click', advertise);
   $('disconnectRosBtn')?.addEventListener('click', () => disconnect(true));
   $('rosStopBtn')?.addEventListener('click', stopPublish);
   $('rosForwardBtn')?.addEventListener('click', () => pulse(1, 0));
   $('rosLeftBtn')?.addEventListener('click', () => pulse(0, 1));
   $('rosRightBtn')?.addEventListener('click', () => pulse(0, -1));
   document.querySelectorAll('.ros-drive-btn').forEach(bindHold);
+  document.querySelectorAll('.ros-speed-profile').forEach((button) => {
+    button.addEventListener('click', () => applySpeedProfile(button));
+  });
   linearInput?.addEventListener('input', updateLabels);
   angularInput?.addEventListener('input', updateLabels);
+  turboOverride?.addEventListener('change', updateLabels);
   updateLabels();
   buildSocketUrl();
 })();

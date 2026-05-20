@@ -138,6 +138,9 @@ pre {
 #rosBackward { grid-column: 2; grid-row: 3; }
 .drive-btn { font-size: 1.4rem; min-height: 72px; }
 .joystick-lab-pad { margin: 18px 0; }
+.ros-speed-profile.active { background: #16a34a; }
+.inline-check { display: flex; align-items: center; gap: 8px; width: auto; min-width: 180px; }
+.inline-check input { width: auto; }
 .row.wrap { flex-wrap: wrap; }
 .row.wrap > * { width: auto; min-width: 160px; }
 .row.small { justify-content: space-between; color: var(--muted); }
