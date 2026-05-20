@@ -6,19 +6,22 @@
 <section class="robot-hero">
   <div class="robot-viewport">
     <model-viewer
+      id="mirModelViewer"
       src="/static/models/mir100-step.glb"
       camera-controls
       auto-rotate
       rotation-per-second="18deg"
       shadow-intensity="0.65"
       exposure="0.95"
-      camera-orbit="35deg 64deg 4.6m"
-      field-of-view="32deg"
+      camera-orbit="35deg 60deg auto"
+      field-of-view="38deg"
       interaction-prompt="none"
       aria-label="Modello 3D MiR 100"
     >
-      <div class="robot-fallback" slot="poster">MiR 100 model</div>
+      <div class="robot-fallback" slot="poster">Caricamento modello MiR 100</div>
+      <div class="robot-fallback">Viewer 3D non caricato. Apri il modello: <a href="/static/models/mir100-step.glb">mir100-step.glb</a></div>
     </model-viewer>
+    <div class="robot-model-status" id="mirModelStatus">Inizializzazione viewer 3D...</div>
     <div class="hud-frame" aria-hidden="true">
       <span></span><span></span><span></span><span></span>
     </div>
@@ -93,5 +96,28 @@
     </div>
   </div>
 </section>
-<script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+<script type="module" src="https://unpkg.com/@google/model-viewer@4.1.0/dist/model-viewer.min.js"></script>
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    const viewer = document.getElementById('mirModelViewer');
+    const status = document.getElementById('mirModelStatus');
+    if (!viewer || !status) return;
+    const failTimer = window.setTimeout(() => {
+      if (!customElements.get('model-viewer')) {
+        status.textContent = 'Viewer 3D non disponibile: libreria model-viewer non caricata.';
+        status.classList.add('error');
+      }
+    }, 2400);
+    viewer.addEventListener('load', () => {
+      window.clearTimeout(failTimer);
+      status.textContent = 'Modello 3D caricato';
+      status.classList.remove('error');
+    });
+    viewer.addEventListener('error', () => {
+      window.clearTimeout(failTimer);
+      status.textContent = 'Errore caricamento GLB';
+      status.classList.add('error');
+    });
+  });
+</script>
 {% endblock %}

@@ -357,6 +357,11 @@ class _StreamFrameCache:
     def stop(self) -> None:
         with self.lock:
             self._stop_locked()
+            self.url = ''
+            self.jpeg = None
+            self.last_frame_ts = 0.0
+            self.frame_id = 0
+            self.last_error = ''
 
     def _loop(self, url: str) -> None:
         cv2, _ = _load_cv2()
@@ -642,6 +647,12 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
 @app.post('/api/tracking/stop')
 async def tracking_stop():
     return {'ok': True, 'message': 'Stop tracking gestito via joystick ROSBridge dal browser.'}
+
+
+@app.post('/api/tracking/reset')
+async def tracking_reset():
+    _STREAM_FRAME_CACHE.stop()
+    return {'ok': True, 'message': 'Tracking e cache camera resettati'}
 
 
 @app.get('/health')

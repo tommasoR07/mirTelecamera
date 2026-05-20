@@ -233,15 +233,47 @@ model-viewer {
   background: transparent;
 }
 
+model-viewer:not(:defined) {
+  display: grid;
+  place-items: center;
+}
+
 .robot-fallback {
   display: grid;
   place-items: center;
+  padding: 28px;
   height: 100%;
   min-height: 360px;
   color: var(--muted);
   font-family: var(--mono);
   letter-spacing: .12em;
+  line-height: 1.6;
+  text-align: center;
   text-transform: uppercase;
+}
+
+.robot-fallback a {
+  color: var(--accent);
+  text-transform: none;
+}
+
+.robot-model-status {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  z-index: 4;
+  padding: 8px 10px;
+  border: 1px solid rgba(66,232,164,.28);
+  border-radius: 8px;
+  background: rgba(8, 11, 15, .82);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: .72rem;
+}
+
+.robot-model-status.error {
+  border-color: rgba(255,91,114,.48);
+  color: #ffdce2;
 }
 
 .hud-frame {

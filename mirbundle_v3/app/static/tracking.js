@@ -10,6 +10,7 @@
   const stopFollowBtn = $('stopFollowBtn');
   const clearBtn = $('clearTargetBtn');
   const saveSettingsBtn = $('saveTrackingSettingsBtn');
+  const totalResetBtn = $('totalResetBtn');
   const streamUrlInput = $('streamUrlInput');
   const snapshotUrlInput = $('snapshotUrlInput');
   const mirHostInput = $('mirHostInput');
@@ -484,6 +485,39 @@
     setText(followStateEl, 'spento');
   }
 
+  async function totalReset() {
+    followEnabled = false;
+    window.clearTimeout(followTimer);
+    stopRobot();
+    selectedTagId = null;
+    pid = resetPid();
+    busy = false;
+    advertised = false;
+    joystickToken = '';
+    if (socket) {
+      try { socket.close(); } catch (_) {}
+    }
+    socket = null;
+    if (streamImg) {
+      streamImg.removeAttribute('src');
+      streamImg.onload = null;
+      streamImg.onerror = null;
+    }
+    setText(tagIdEl, '-');
+    setText(offsetEl, '-');
+    setText(ratioEl, '-');
+    setText(perfEl, '-');
+    setText(rosStateEl, 'reset');
+    setText(targetStateEl, 'reset completato');
+    setText(followStateEl, 'reset totale...');
+    drawGuide();
+    try {
+      await fetch('/api/tracking/reset', { method: 'POST' });
+    } catch (_) {}
+    connectStream();
+    setText(followStateEl, 'reset totale completato');
+  }
+
   function applyPreset(button) {
     document.querySelectorAll('.tracking-preset').forEach((el) => el.classList.remove('active'));
     button.classList.add('active');
@@ -505,6 +539,7 @@
   detectBtn?.addEventListener('click', detectTag);
   startFollowBtn?.addEventListener('click', startFollow);
   stopFollowBtn?.addEventListener('click', stopFollow);
+  totalResetBtn?.addEventListener('click', totalReset);
   desiredRatioInput?.addEventListener('input', updateTargetSizeLabel);
   maxLinearInput?.addEventListener('input', saveTrackingSettings);
   maxAngularInput?.addEventListener('input', saveTrackingSettings);
