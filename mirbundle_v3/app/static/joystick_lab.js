@@ -13,12 +13,15 @@
   const linearValue = $('rosLinearValue');
   const angularValue = $('rosAngularValue');
   const turboOverride = $('rosTurboOverride');
+  const joystick = $('rosJoystick');
+  const joystickKnob = $('rosJoystickKnob');
 
   let socket = null;
   let connected = false;
   let advertised = false;
   let holdTimer = null;
-  let autoStopTimer = null;
+  let joystickPointerId = null;
+  let joystickVector = { linearScale: 0, angularScale: 0 };
 
   function setText(el, value) {
     if (el) el.textContent = value;
@@ -137,7 +140,7 @@
   }
 
   function values(linearScale, angularScale) {
-    const multiplier = turboOverride?.checked ? 1.25 : 1;
+    const multiplier = turboOverride?.checked ? 1.5 : 1;
     return {
       linear: Number((Number(linearInput.value || 0) * multiplier * linearScale).toFixed(4)),
       angular: Number((Number(angularInput.value || 0) * multiplier * angularScale).toFixed(4)),
@@ -170,43 +173,69 @@
 
   function stopPublish() {
     window.clearInterval(holdTimer);
-    window.clearTimeout(autoStopTimer);
     holdTimer = null;
-    autoStopTimer = null;
+    joystickVector = { linearScale: 0, angularScale: 0 };
+    setKnob(0, 0);
     if (socket && socket.readyState === WebSocket.OPEN) {
       publishVelocity(0, 0);
     }
   }
 
-  function pulse(linearScale, angularScale, durationMs = 1000) {
-    const v = values(linearScale, angularScale);
-    publishVelocity(v.linear, v.angular);
-    window.clearTimeout(autoStopTimer);
-    autoStopTimer = window.setTimeout(stopPublish, durationMs);
+  function setKnob(x, y) {
+    if (!joystickKnob) return;
+    joystickKnob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
   }
 
-  function bindHold(button) {
-    const linearScale = Number(button.dataset.linear || 0);
-    const angularScale = Number(button.dataset.angular || 0);
-    const start = () => {
-      const v = values(linearScale, angularScale);
-      publishVelocity(v.linear, v.angular);
-      window.clearInterval(holdTimer);
-      holdTimer = window.setInterval(() => publishVelocity(v.linear, v.angular), 100);
+  function updateJoystickFromPointer(event) {
+    if (!joystick) return;
+    const rect = joystick.getBoundingClientRect();
+    const radius = Math.min(rect.width, rect.height) / 2;
+    const knobRadius = 28;
+    const max = Math.max(1, radius - knobRadius);
+    let x = event.clientX - (rect.left + rect.width / 2);
+    let y = event.clientY - (rect.top + rect.height / 2);
+    const dist = Math.hypot(x, y);
+    if (dist > max) {
+      x = (x / dist) * max;
+      y = (y / dist) * max;
+    }
+    setKnob(x, y);
+    joystickVector = {
+      linearScale: Number((-y / max).toFixed(3)),
+      angularScale: Number((-x / max).toFixed(3)),
     };
-    const stop = () => stopPublish();
-    button.addEventListener('mousedown', start);
-    button.addEventListener('touchstart', (event) => {
-      event.preventDefault();
-      start();
-    }, { passive: false });
-    button.addEventListener('mouseup', stop);
-    button.addEventListener('mouseleave', stop);
-    button.addEventListener('touchend', stop);
+    publishJoystickVector();
+  }
+
+  function publishJoystickVector() {
+    const v = values(joystickVector.linearScale, joystickVector.angularScale);
+    publishVelocity(v.linear, v.angular);
+  }
+
+  function startJoystick(event) {
+    if (!joystick) return;
+    event.preventDefault();
+    joystickPointerId = event.pointerId;
+    joystick.setPointerCapture(event.pointerId);
+    updateJoystickFromPointer(event);
+    window.clearInterval(holdTimer);
+    holdTimer = window.setInterval(publishJoystickVector, 100);
+  }
+
+  function moveJoystick(event) {
+    if (joystickPointerId !== event.pointerId) return;
+    event.preventDefault();
+    updateJoystickFromPointer(event);
+  }
+
+  function endJoystick(event) {
+    if (joystickPointerId !== event.pointerId) return;
+    joystickPointerId = null;
+    stopPublish();
   }
 
   function updateLabels() {
-    const multiplier = turboOverride?.checked ? 1.25 : 1;
+    const multiplier = turboOverride?.checked ? 1.5 : 1;
     setText(linearValue, `${(Number(linearInput.value || 0) * multiplier).toFixed(2)}${multiplier > 1 ? ' turbo' : ''}`);
     setText(angularValue, `${(Number(angularInput.value || 0) * multiplier).toFixed(2)}${multiplier > 1 ? ' turbo' : ''}`);
   }
@@ -222,10 +251,10 @@
   $('connectRosBtn')?.addEventListener('click', connect);
   $('disconnectRosBtn')?.addEventListener('click', () => disconnect(true));
   $('rosStopBtn')?.addEventListener('click', stopPublish);
-  $('rosForwardBtn')?.addEventListener('click', () => pulse(1, 0));
-  $('rosLeftBtn')?.addEventListener('click', () => pulse(0, 1));
-  $('rosRightBtn')?.addEventListener('click', () => pulse(0, -1));
-  document.querySelectorAll('.ros-drive-btn').forEach(bindHold);
+  joystick?.addEventListener('pointerdown', startJoystick);
+  joystick?.addEventListener('pointermove', moveJoystick);
+  joystick?.addEventListener('pointerup', endJoystick);
+  joystick?.addEventListener('pointercancel', endJoystick);
   document.querySelectorAll('.ros-speed-profile').forEach((button) => {
     button.addEventListener('click', () => applySpeedProfile(button));
   });

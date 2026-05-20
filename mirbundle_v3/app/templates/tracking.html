@@ -31,29 +31,24 @@
   <section class="card">
     <h2>PID manuale</h2>
     <div class="stack">
-      <label>Distanza target desiderata
-        <input id="trackingTargetSize" type="range" min="12" max="50" step="1" value="{{ settings.tracking_target_size_percent or '32' }}">
+      <label>Distanza target desiderata, percentuale frame
+        <input id="trackingTargetSize" type="number" min="12" max="80" step="1" value="{{ settings.tracking_target_size_percent or '32' }}">
       </label>
       <div class="row small"><span>Dimensione tag desiderata</span><strong id="trackingTargetSizeValue">{{ settings.tracking_target_size_percent or '32' }}%</strong></div>
       <div class="grid two">
         <label>Lineare max
-          <input id="trackingLinearGain" type="range" min="0.03" max="1.50" step="0.01" value="{{ settings.tracking_max_linear or '1.50' }}">
+          <input id="trackingLinearGain" type="number" min="0" max="5" step="0.01" value="{{ settings.tracking_max_linear or '1.50' }}">
         </label>
         <label>Angolare max
-          <input id="trackingAngularGain" type="range" min="0.08" max="1.50" step="0.01" value="{{ settings.tracking_max_angular or '1.50' }}">
+          <input id="trackingAngularGain" type="number" min="0" max="5" step="0.01" value="{{ settings.tracking_max_angular or '1.50' }}">
         </label>
       </div>
-      <div class="row wrap">
-        <button class="btn tracking-speed-profile" data-linear="0.35" data-angular="0.50" type="button">Lento</button>
-        <button class="btn tracking-speed-profile" data-linear="0.80" data-angular="0.90" type="button">Medio</button>
-        <button class="btn tracking-speed-profile active" data-linear="1.50" data-angular="1.50" type="button">Max PID</button>
-      </div>
-      <input id="trackingPidLinearKp" type="hidden" value="1.15">
-      <input id="trackingPidLinearKi" type="hidden" value="0.04">
-      <input id="trackingPidLinearKd" type="hidden" value="0.10">
-      <input id="trackingPidAngularKp" type="hidden" value="0.95">
-      <input id="trackingPidAngularKi" type="hidden" value="0.02">
-      <input id="trackingPidAngularKd" type="hidden" value="0.16">
+      <input id="trackingPidLinearKp" type="hidden" value="7.50">
+      <input id="trackingPidLinearKi" type="hidden" value="0.00">
+      <input id="trackingPidLinearKd" type="hidden" value="0.45">
+      <input id="trackingPidAngularKp" type="hidden" value="6.50">
+      <input id="trackingPidAngularKi" type="hidden" value="0.00">
+      <input id="trackingPidAngularKd" type="hidden" value="0.55">
     </div>
     <dl class="kv compact" id="trackingStats">
       <div><dt>Stream</dt><dd id="trackingStreamState">non connesso</dd></div>
@@ -77,5 +72,5 @@
     <li>Quando l'app mostra l'ID acquisito, premi <strong>Segui con PID</strong>.</li>
   </ol>
 </section>
-<script src="/static/tracking.js?v=pid-rosbridge-2"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-3"></script>
 {% endblock %}

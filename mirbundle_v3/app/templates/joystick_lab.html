@@ -31,35 +31,30 @@
   <div class="row wrap">
     <button class="btn ros-speed-profile active" data-linear="0.10" data-angular="0.28" type="button">Normale</button>
     <button class="btn ros-speed-profile" data-linear="0.18" data-angular="0.45" type="button">Veloce</button>
-    <button class="btn danger ros-speed-profile" data-linear="3.00" data-angular="3.00" type="button">IperTurbo</button>
+    <button class="btn danger ros-speed-profile" data-linear="10.00" data-angular="10.00" type="button">F1</button>
     <label class="inline-check"><input id="rosTurboOverride" type="checkbox"> Override oltre max</label>
   </div>
   <div class="grid two">
     <div class="stack">
       <label>Lineare max
-        <input id="rosLinearSpeed" type="range" min="0.02" max="3.00" step="0.01" value="0.10">
+        <input id="rosLinearSpeed" type="range" min="0.02" max="10.00" step="0.01" value="0.10">
       </label>
       <div class="row small"><span>linear.x</span><strong id="rosLinearValue">0.10</strong></div>
     </div>
     <div class="stack">
       <label>Angolare max
-        <input id="rosAngularSpeed" type="range" min="0.08" max="3.00" step="0.01" value="0.28">
+        <input id="rosAngularSpeed" type="range" min="0.08" max="10.00" step="0.01" value="0.28">
       </label>
       <div class="row small"><span>angular.z</span><strong id="rosAngularValue">0.28</strong></div>
     </div>
   </div>
-  <div class="drive-pad joystick-lab-pad">
-    <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="0" id="rosStopCenter">STOP</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="1" data-angular="0" id="rosForward">UP</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="-1" data-angular="0" id="rosBackward">DOWN</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="1" id="rosLeft">LEFT</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="-1" id="rosRight">RIGHT</button>
+  <div class="joystick-stage" id="rosJoystick">
+    <div class="joystick-cross horizontal"></div>
+    <div class="joystick-cross vertical"></div>
+    <div class="joystick-knob" id="rosJoystickKnob"></div>
   </div>
   <div class="row wrap">
     <button class="btn danger" id="rosStopBtn" type="button">Stop publish</button>
-    <button class="btn" id="rosForwardBtn" type="button">Avanti 1s</button>
-    <button class="btn" id="rosLeftBtn" type="button">Sinistra 1s</button>
-    <button class="btn" id="rosRightBtn" type="button">Destra 1s</button>
   </div>
 </section>
 
@@ -72,5 +67,5 @@
   <pre id="rosLog">Pronto.</pre>
 </section>
 
-<script src="/static/joystick_lab.js?v=rosbridge-lab-4"></script>
+<script src="/static/joystick_lab.js?v=rosbridge-lab-6"></script>
 {% endblock %}

@@ -131,13 +131,39 @@ pre {
 #btnStopCenter { grid-column: 2; grid-row: 2; }
 #btnRight { grid-column: 3; grid-row: 2; }
 #btnBackward { grid-column: 2; grid-row: 3; }
-#rosForward { grid-column: 2; grid-row: 1; }
-#rosLeft { grid-column: 1; grid-row: 2; }
-#rosStopCenter { grid-column: 2; grid-row: 2; }
-#rosRight { grid-column: 3; grid-row: 2; }
-#rosBackward { grid-column: 2; grid-row: 3; }
 .drive-btn { font-size: 1.4rem; min-height: 72px; }
 .joystick-lab-pad { margin: 18px 0; }
+.joystick-stage {
+  position: relative;
+  width: min(72vw, 360px);
+  aspect-ratio: 1;
+  margin: 20px auto;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: radial-gradient(circle at center, #111827 0 28%, #020617 29% 100%);
+  touch-action: none;
+  user-select: none;
+}
+.joystick-cross {
+  position: absolute;
+  background: rgba(148, 163, 184, 0.28);
+  pointer-events: none;
+}
+.joystick-cross.horizontal { left: 10%; right: 10%; top: calc(50% - 1px); height: 2px; }
+.joystick-cross.vertical { top: 10%; bottom: 10%; left: calc(50% - 1px); width: 2px; }
+.joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: #2563eb;
+  border: 3px solid rgba(255,255,255,.7);
+  box-shadow: 0 12px 30px rgba(0,0,0,.35);
+  pointer-events: none;
+}
 .ros-speed-profile.active,
 .tracking-speed-profile.active { background: #16a34a; }
 .inline-check { display: flex; align-items: center; gap: 8px; width: auto; min-width: 180px; }

@@ -24,8 +24,6 @@
   const desiredRatioValue = $('trackingTargetSizeValue');
   const maxLinearInput = $('trackingLinearGain');
   const maxAngularInput = $('trackingAngularGain');
-  const turboOverride = $('trackingTurboOverride');
-
   const pidInputs = {
     linearKp: $('trackingPidLinearKp'),
     linearKi: $('trackingPidLinearKi'),
@@ -255,8 +253,8 @@
 
     const distanceError = desired - sizeRatio;
     const offsetError = offset;
-    const distanceDeadband = 0.018;
-    const offsetDeadband = 0.035;
+    const distanceDeadband = 0.030;
+    const offsetDeadband = 0.050;
 
     pid.distanceIntegral = clamp(pid.distanceIntegral + distanceError * dt, -0.35, 0.35);
     pid.offsetIntegral = clamp(pid.offsetIntegral + offsetError * dt, -0.45, 0.45);
@@ -265,28 +263,30 @@
     pid.distancePrev = distanceError;
     pid.offsetPrev = offsetError;
 
-    const turbo = turboOverride?.checked ? 1.45 : 1;
-    const maxLinear = number(maxLinearInput, 0.18) * turbo;
-    const maxAngular = number(maxAngularInput, 0.45) * turbo;
+    const maxLinear = number(maxLinearInput, 1.5);
+    const maxAngular = number(maxAngularInput, 1.5);
 
     let linear = 0;
-    if (Math.abs(distanceError) > distanceDeadband) {
-      linear =
-        number(pidInputs.linearKp, 1.15) * distanceError +
-        number(pidInputs.linearKi, 0.04) * pid.distanceIntegral +
-        number(pidInputs.linearKd, 0.10) * distanceDerivative;
+    if (distanceError > distanceDeadband) {
+      const effort =
+        number(pidInputs.linearKp, 7.5) * distanceError +
+        number(pidInputs.linearKi, 0) * pid.distanceIntegral +
+        number(pidInputs.linearKd, 0.45) * Math.max(0, distanceDerivative);
+      linear = maxLinear * clamp(Math.abs(effort), 0.25, 1);
+    } else if (distanceError < -distanceDeadband * 1.8) {
+      linear = -maxLinear * 0.20;
     }
 
     let angular = 0;
     if (Math.abs(offsetError) > offsetDeadband) {
-      angular = -(
-        number(pidInputs.angularKp, 0.95) * offsetError +
-        number(pidInputs.angularKi, 0.02) * pid.offsetIntegral +
-        number(pidInputs.angularKd, 0.16) * offsetDerivative
-      );
+      const effort =
+        number(pidInputs.angularKp, 6.5) * Math.abs(offsetError) +
+        number(pidInputs.angularKi, 0) * Math.abs(pid.offsetIntegral) +
+        number(pidInputs.angularKd, 0.55) * Math.abs(offsetDerivative);
+      angular = -Math.sign(offsetError) * maxAngular * clamp(effort, 0.25, 1);
     }
 
-    linear = clamp(linear, -maxLinear * 0.35, maxLinear);
+    linear = clamp(linear, -maxLinear * 0.20, maxLinear);
     angular = clamp(angular, -maxAngular, maxAngular);
     return { linear, angular };
   }
