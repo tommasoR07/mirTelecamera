@@ -95,9 +95,6 @@ def save_settings(
     manual_release_endpoint_path: str = Form(''),
     manual_release_http_method: str = Form('PUT'),
     manual_release_body_template: str = Form('{"state_id": 3}'),
-    tracking_target_size_percent: str = Form('32'),
-    tracking_max_linear: str = Form('1.50'),
-    tracking_max_angular: str = Form('1.50'),
 ):
     db.save_settings(
         host,
@@ -115,9 +112,6 @@ def save_settings(
         manual_release_endpoint_path,
         manual_release_http_method,
         manual_release_body_template,
-        tracking_target_size_percent,
-        tracking_max_linear,
-        tracking_max_angular,
     )
     return redirect('/settings?message=Configurazione salvata')
 
@@ -318,6 +312,7 @@ class _StreamFrameCache:
         self.running = False
         self.jpeg: bytes | None = None
         self.last_frame_ts = 0.0
+        self.frame_id = 0
         self.last_error = ''
 
     def get_jpeg(self, url: str, wait_seconds: float = 2.0) -> bytes:
@@ -392,6 +387,7 @@ class _StreamFrameCache:
                         if self.running and self.url == url:
                             self.jpeg = buffer.tobytes()
                             self.last_frame_ts = time.time()
+                            self.frame_id += 1
                             self.last_error = ''
         finally:
             with self.lock:
@@ -434,6 +430,12 @@ def _get_apriltag_detector(cv2, dictionary_name: str):
 
 def _capture_frame_from_stream(url: str) -> bytes:
     return _STREAM_FRAME_CACHE.get_jpeg(url)
+
+
+def _stream_frame_meta() -> dict[str, Any]:
+    with _STREAM_FRAME_CACHE.lock:
+        age_ms = (time.time() - _STREAM_FRAME_CACHE.last_frame_ts) * 1000 if _STREAM_FRAME_CACHE.last_frame_ts else None
+        return {'frame_age_ms': round(age_ms, 1) if age_ms is not None else None, 'frame_id': _STREAM_FRAME_CACHE.frame_id}
 
 
 async def _download_snapshot(url: str, stream_url: str = '') -> bytes:
@@ -539,10 +541,10 @@ def _detect_apriltags_from_jpeg(
 
     # Durante l'acquisizione scegli il tag più grande dentro il riquadro centrale.
     guide = {
-        'x': int(width * 0.18),
-        'y': int(height * 0.12),
-        'w': int(width * 0.64),
-        'h': int(height * 0.72),
+        'x': 0,
+        'y': 0,
+        'w': int(width),
+        'h': int(height),
     }
 
     def in_guide(tag: dict[str, Any]) -> bool:
@@ -621,6 +623,7 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
     max_detect_width = int(payload.get('max_detect_width') or 640)
     result: dict[str, Any] = {'ok': False, 'target_id': target_id}
     try:
+        started = time.perf_counter()
         image = await _download_snapshot(snapshot_url, stream_url)
         detection = _detect_apriltags_from_jpeg(
             image,
@@ -628,8 +631,9 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
             acquire_target=acquire_target,
             max_detect_width=max_detect_width,
         )
+        detect_ms = (time.perf_counter() - started) * 1000
         command = _compute_tag_tracking_command(detection['tag'], detection['width'], detection['height'], desired_size_ratio, max_linear, max_angular)
-        result.update({'ok': True, **detection, 'command': command})
+        result.update({'ok': True, **detection, 'command': command, 'perf': {'detect_ms': round(detect_ms, 1), **_stream_frame_meta()}})
         return result
     except Exception as exc:
         return {'ok': False, 'error': str(exc), 'command': {'linear': 0.0, 'angular': 0.0, 'suggestion': 'errore: stop'}}

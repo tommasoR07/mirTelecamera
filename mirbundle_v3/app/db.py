@@ -24,9 +24,6 @@ DEFAULT_SETTINGS = {
     'manual_release_endpoint_path': '',
     'manual_release_http_method': 'PUT',
     'manual_release_body_template': '{"state_id": 3}',
-    'tracking_target_size_percent': '32',
-    'tracking_max_linear': '1.50',
-    'tracking_max_angular': '1.50',
 }
 
 
@@ -69,9 +66,6 @@ def init_db() -> None:
         _ensure_column(conn, 'settings', 'manual_release_endpoint_path', 'TEXT', "''")
         _ensure_column(conn, 'settings', 'manual_release_http_method', 'TEXT', "'PUT'")
         _ensure_column(conn, 'settings', 'manual_release_body_template', 'TEXT', "'{\"state_id\": 3}'")
-        _ensure_column(conn, 'settings', 'tracking_target_size_percent', 'TEXT', "'32'")
-        _ensure_column(conn, 'settings', 'tracking_max_linear', 'TEXT', "'1.50'")
-        _ensure_column(conn, 'settings', 'tracking_max_angular', 'TEXT', "'1.50'")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workflows (
@@ -124,9 +118,6 @@ def save_settings(
     manual_release_endpoint_path: str = '',
     manual_release_http_method: str = 'PUT',
     manual_release_body_template: str = '{"state_id": 3}',
-    tracking_target_size_percent: str = '32',
-    tracking_max_linear: str = '1.50',
-    tracking_max_angular: str = '1.50',
 ) -> None:
     with get_conn() as conn:
         conn.execute(
@@ -136,8 +127,7 @@ def save_settings(
                 drive_endpoint_path = ?, drive_http_method = ?, drive_body_template = ?,
                 camera_stream_url = ?, camera_snapshot_url = ?,
                 manual_take_endpoint_path = ?, manual_take_http_method = ?, manual_take_body_template = ?,
-                manual_release_endpoint_path = ?, manual_release_http_method = ?, manual_release_body_template = ?,
-                tracking_target_size_percent = ?, tracking_max_linear = ?, tracking_max_angular = ?
+                manual_release_endpoint_path = ?, manual_release_http_method = ?, manual_release_body_template = ?
             WHERE id = 1
             """,
             (
@@ -156,9 +146,6 @@ def save_settings(
                 manual_release_endpoint_path.strip().lstrip('/'),
                 manual_release_http_method.strip().upper() or 'PUT',
                 manual_release_body_template.strip() or DEFAULT_SETTINGS['manual_release_body_template'],
-                tracking_target_size_percent.strip() or DEFAULT_SETTINGS['tracking_target_size_percent'],
-                tracking_max_linear.strip() or DEFAULT_SETTINGS['tracking_max_linear'],
-                tracking_max_angular.strip() or DEFAULT_SETTINGS['tracking_max_angular'],
             ),
         )
 

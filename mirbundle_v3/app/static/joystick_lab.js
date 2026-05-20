@@ -15,8 +15,7 @@
   const turboOverride = $('rosTurboOverride');
   const joystick = $('rosJoystick');
   const joystickKnob = $('rosJoystickKnob');
-  const arrowMode = $('rosArrowMode');
-  const arrowPad = $('rosArrowPad');
+  const STORAGE_KEY = 'mir.joystickLab.v1';
 
   let socket = null;
   let connected = false;
@@ -24,6 +23,23 @@
   let holdTimer = null;
   let joystickPointerId = null;
   let joystickVector = { linearScale: 0, angularScale: 0 };
+
+  function saveSettings() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      linear: linearInput.value,
+      angular: angularInput.value,
+      turbo: !!turboOverride?.checked,
+    }));
+  }
+
+  function loadSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      if (saved.linear) linearInput.value = saved.linear;
+      if (saved.angular) angularInput.value = saved.angular;
+      if (turboOverride) turboOverride.checked = !!saved.turbo;
+    } catch (_) {}
+  }
 
   function setText(el, value) {
     if (el) el.textContent = value;
@@ -237,27 +253,11 @@
     stopPublish();
   }
 
-  function bindHold(button) {
-    const linearScale = Number(button.dataset.linear || 0);
-    const angularScale = Number(button.dataset.angular || 0);
-    const start = (event) => {
-      event.preventDefault();
-      const v = values(linearScale, angularScale);
-      publishVelocity(v.linear, v.angular);
-      window.clearInterval(holdTimer);
-      holdTimer = window.setInterval(() => publishVelocity(v.linear, v.angular), 100);
-    };
-    const stop = () => stopPublish();
-    button.addEventListener('pointerdown', start);
-    button.addEventListener('pointerup', stop);
-    button.addEventListener('pointercancel', stop);
-    button.addEventListener('pointerleave', stop);
-  }
-
   function updateLabels() {
     const multiplier = turboOverride?.checked ? 1.5 : 1;
     setText(linearValue, `${(Number(linearInput.value || 0) * multiplier).toFixed(2)}${multiplier > 1 ? ' turbo' : ''}`);
     setText(angularValue, `${(Number(angularInput.value || 0) * multiplier).toFixed(2)}${multiplier > 1 ? ' turbo' : ''}`);
+    saveSettings();
   }
 
   function applySpeedProfile(button) {
@@ -268,13 +268,6 @@
     updateLabels();
   }
 
-  function updateDriveMode() {
-    const useArrows = !!arrowMode?.checked;
-    joystick?.classList.toggle('hidden', useArrows);
-    arrowPad?.classList.toggle('hidden', !useArrows);
-    stopPublish();
-  }
-
   $('connectRosBtn')?.addEventListener('click', connect);
   $('disconnectRosBtn')?.addEventListener('click', () => disconnect(true));
   $('rosStopBtn')?.addEventListener('click', stopPublish);
@@ -282,15 +275,13 @@
   joystick?.addEventListener('pointermove', moveJoystick);
   joystick?.addEventListener('pointerup', endJoystick);
   joystick?.addEventListener('pointercancel', endJoystick);
-  document.querySelectorAll('.ros-drive-btn').forEach(bindHold);
   document.querySelectorAll('.ros-speed-profile').forEach((button) => {
     button.addEventListener('click', () => applySpeedProfile(button));
   });
   linearInput?.addEventListener('input', updateLabels);
   angularInput?.addEventListener('input', updateLabels);
   turboOverride?.addEventListener('change', updateLabels);
-  arrowMode?.addEventListener('change', updateDriveMode);
+  loadSettings();
   updateLabels();
-  updateDriveMode();
   buildSocketUrl();
 })();

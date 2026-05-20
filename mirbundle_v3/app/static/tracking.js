@@ -18,12 +18,15 @@
   const tagIdEl = $('trackingTagId');
   const offsetEl = $('trackingOffset');
   const ratioEl = $('trackingRatio');
+  const perfEl = $('trackingPerf');
   const commandEl = $('trackingCommand');
   const followStateEl = $('trackingFollowState');
   const desiredRatioInput = $('trackingTargetSize');
   const desiredRatioValue = $('trackingTargetSizeValue');
   const maxLinearInput = $('trackingLinearGain');
   const maxAngularInput = $('trackingAngularGain');
+  const pidHzInput = $('trackingPidHz');
+  const detectWidthInput = $('trackingDetectWidth');
   const pidInputs = {
     linearKp: $('trackingPidLinearKp'),
     linearKi: $('trackingPidLinearKi'),
@@ -32,6 +35,7 @@
     angularKi: $('trackingPidAngularKi'),
     angularKd: $('trackingPidAngularKd'),
   };
+  const STORAGE_KEY = 'mir.trackingPid.v1';
 
   let selectedTagId = null;
   let followEnabled = false;
@@ -55,6 +59,8 @@
       missedFrames: 0,
       angularBrakeUntil: 0,
       lastOffsetSign: 0,
+      lastLoopAt: 0,
+      lastLoopMs: 0,
     };
   }
 
@@ -73,6 +79,36 @@
 
   function updateTargetSizeLabel() {
     setText(desiredRatioValue, `${desiredRatioInput?.value || 18}%`);
+    saveTrackingSettings();
+  }
+
+  function saveTrackingSettings() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      targetSize: desiredRatioInput?.value || '32',
+      maxLinear: maxLinearInput?.value || '1.50',
+      maxAngular: maxAngularInput?.value || '1.50',
+      pidHz: pidHzInput?.value || '30',
+      detectWidth: detectWidthInput?.value || '640',
+    }));
+  }
+
+  function loadTrackingSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      if (saved.targetSize) desiredRatioInput.value = saved.targetSize;
+      if (saved.maxLinear) maxLinearInput.value = saved.maxLinear;
+      if (saved.maxAngular) maxAngularInput.value = saved.maxAngular;
+      if (saved.pidHz) pidHzInput.value = saved.pidHz;
+      if (saved.detectWidth) detectWidthInput.value = saved.detectWidth;
+      updatePresetActiveState();
+    } catch (_) {}
+  }
+
+  function updatePresetActiveState() {
+    document.querySelectorAll('.tracking-preset').forEach((button) => {
+      const active = button.dataset.hz === pidHzInput?.value && button.dataset.detectWidth === detectWidthInput?.value;
+      button.classList.toggle('active', active);
+    });
   }
 
   function buildSocketUrl() {
@@ -204,19 +240,6 @@
 
   function drawGuide() {
     if (!ensureCanvas()) return;
-    const g = {
-      x: Math.round(overlay.width * 0.18),
-      y: Math.round(overlay.height * 0.12),
-      w: Math.round(overlay.width * 0.64),
-      h: Math.round(overlay.height * 0.72),
-    };
-    ctx.strokeStyle = 'rgba(59,130,246,0.95)';
-    ctx.lineWidth = 4;
-    ctx.setLineDash([14, 8]);
-    ctx.strokeRect(g.x, g.y, g.w, g.h);
-    ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(59,130,246,0.14)';
-    ctx.fillRect(g.x, g.y, g.w, g.h);
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -281,6 +304,7 @@
 
     const maxLinear = number(maxLinearInput, 1.5);
     const maxAngular = number(maxAngularInput, 1.5);
+    const angularWindow = 0.55;
 
     let linear = 0;
     if (distanceError > distanceDeadband) {
@@ -300,11 +324,12 @@
       const effort =
         number(pidInputs.angularKp, 6.5) * (Math.abs(offsetError) - offsetDeadband) +
         number(pidInputs.angularKi, 0) * Math.abs(pid.offsetIntegral);
-      angular = -Math.sign(offsetError) * maxAngular * clamp(effort, 0, 1);
+      const shaped = clamp(effort, 0, 1) * clamp(Math.abs(offsetError) / angularWindow, 0, 1);
+      angular = -Math.sign(offsetError) * maxAngular * shaped;
     }
 
     linear = clamp(linear, -maxLinear * 0.20, maxLinear);
-    const nearCenterLimit = maxAngular * clamp((Math.abs(offsetError) - offsetDeadband) / 0.45, 0, 1);
+    const nearCenterLimit = maxAngular * clamp((Math.abs(offsetError) - offsetDeadband) / angularWindow, 0, 1);
     angular = clamp(angular, -nearCenterLimit, nearCenterLimit);
     return { linear, angular };
   }
@@ -315,6 +340,7 @@
       setText(targetStateEl, msg);
       setText(offsetEl, '-');
       setText(ratioEl, '-');
+      setText(perfEl, '-');
       drawGuide();
       pid.missedFrames += 1;
       pid.visibleFrames = 0;
@@ -338,6 +364,9 @@
     setText(targetStateEl, `rilevato AprilTag ID ${tag.id}`);
     setText(offsetEl, cmd.offset_x ?? '-');
     setText(ratioEl, cmd.size_ratio ?? '-');
+    const perf = data.perf || {};
+    const actualHz = pid.lastLoopMs ? `${(1000 / pid.lastLoopMs).toFixed(1)} Hz` : '-';
+    setText(perfEl, `det ${perf.detect_ms ?? '-'} ms | frame ${perf.frame_age_ms ?? '-'} ms | loop ${actualHz}`);
     return cmd;
   }
 
@@ -352,7 +381,7 @@
       desired_size_ratio: number(desiredRatioInput, 18) / 100,
       max_linear: number(maxLinearInput, 0.18),
       max_angular: number(maxAngularInput, 0.45),
-      max_detect_width: 640,
+      max_detect_width: Math.max(320, Math.min(1080, number(detectWidthInput, 640))),
     };
   }
 
@@ -434,13 +463,16 @@
   async function followLoop() {
     if (!followEnabled) return;
     const started = performance.now();
+    if (pid.lastLoopAt) pid.lastLoopMs = started - pid.lastLoopAt;
+    pid.lastLoopAt = started;
     const cmd = await tagStep(false);
     if (followEnabled && cmd) {
       const out = computePid(cmd);
       publishVelocity(out.linear, out.angular);
     }
     const elapsed = performance.now() - started;
-    followTimer = window.setTimeout(followLoop, Math.max(20, 50 - elapsed));
+    const targetMs = 1000 / Math.max(1, Math.min(60, number(pidHzInput, 30)));
+    followTimer = window.setTimeout(followLoop, Math.max(8, targetMs - elapsed));
   }
 
   function stopFollow() {
@@ -450,11 +482,14 @@
     setText(followStateEl, 'spento');
   }
 
-  function applySpeedProfile(button) {
-    document.querySelectorAll('.tracking-speed-profile').forEach((el) => el.classList.remove('active'));
+  function applyPreset(button) {
+    document.querySelectorAll('.tracking-preset').forEach((el) => el.classList.remove('active'));
     button.classList.add('active');
     maxLinearInput.value = button.dataset.linear || maxLinearInput.value;
     maxAngularInput.value = button.dataset.angular || maxAngularInput.value;
+    pidHzInput.value = button.dataset.hz || pidHzInput.value;
+    detectWidthInput.value = button.dataset.detectWidth || detectWidthInput.value;
+    saveTrackingSettings();
   }
 
   clearBtn?.addEventListener('click', () => {
@@ -469,9 +504,15 @@
   startFollowBtn?.addEventListener('click', startFollow);
   stopFollowBtn?.addEventListener('click', stopFollow);
   desiredRatioInput?.addEventListener('input', updateTargetSizeLabel);
-  document.querySelectorAll('.tracking-speed-profile').forEach((button) => {
-    button.addEventListener('click', () => applySpeedProfile(button));
+  maxLinearInput?.addEventListener('input', saveTrackingSettings);
+  maxAngularInput?.addEventListener('input', saveTrackingSettings);
+  pidHzInput?.addEventListener('input', saveTrackingSettings);
+  detectWidthInput?.addEventListener('input', saveTrackingSettings);
+  document.querySelectorAll('.tracking-preset').forEach((button) => {
+    button.addEventListener('click', () => applyPreset(button));
   });
+  loadTrackingSettings();
+  updatePresetActiveState();
   updateTargetSizeLabel();
   setText(followStateEl, 'pronto');
   drawGuide();

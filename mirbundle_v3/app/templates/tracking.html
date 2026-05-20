@@ -32,17 +32,24 @@
     <h2>PID manuale</h2>
     <div class="stack">
       <label>Distanza target desiderata, percentuale frame
-        <input id="trackingTargetSize" type="number" min="12" max="80" step="1" value="{{ settings.tracking_target_size_percent or '32' }}">
+        <input id="trackingTargetSize" type="number" min="12" max="80" step="1" value="32">
       </label>
-      <div class="row small"><span>Dimensione tag desiderata</span><strong id="trackingTargetSizeValue">{{ settings.tracking_target_size_percent or '32' }}%</strong></div>
+      <div class="row small"><span>Dimensione tag desiderata</span><strong id="trackingTargetSizeValue">32%</strong></div>
       <div class="grid two">
         <label>Lineare max
-          <input id="trackingLinearGain" type="number" min="0" max="5" step="0.01" value="{{ settings.tracking_max_linear or '1.50' }}">
+          <input id="trackingLinearGain" type="number" min="0" max="5" step="0.01" value="1.50">
         </label>
         <label>Angolare max
-          <input id="trackingAngularGain" type="number" min="0" max="5" step="0.01" value="{{ settings.tracking_max_angular or '1.50' }}">
+          <input id="trackingAngularGain" type="number" min="0" max="5" step="0.01" value="1.50">
         </label>
       </div>
+      <div class="row wrap">
+        <button class="btn tracking-preset active" data-hz="30" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">30 Hz</button>
+        <button class="btn tracking-preset" data-hz="40" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">40 Hz</button>
+        <button class="btn tracking-preset" data-hz="50" data-detect-width="720" data-linear="1.50" data-angular="1.50" type="button">50 Hz</button>
+      </div>
+      <input id="trackingPidHz" type="hidden" value="30">
+      <input id="trackingDetectWidth" type="hidden" value="640">
       <input id="trackingPidLinearKp" type="hidden" value="7.50">
       <input id="trackingPidLinearKi" type="hidden" value="0.00">
       <input id="trackingPidLinearKd" type="hidden" value="0.45">
@@ -57,6 +64,7 @@
       <div><dt>AprilTag ID</dt><dd id="trackingTagId">-</dd></div>
       <div><dt>Offset X</dt><dd id="trackingOffset">-</dd></div>
       <div><dt>Dimensione frame</dt><dd id="trackingRatio">-</dd></div>
+      <div><dt>Performance</dt><dd id="trackingPerf">-</dd></div>
       <div><dt>PID</dt><dd id="trackingCommand">linear=0 angular=0</dd></div>
       <div><dt>Follow</dt><dd id="trackingFollowState">spento</dd></div>
     </dl>
@@ -72,5 +80,5 @@
     <li>Quando l'app mostra l'ID acquisito, premi <strong>Segui con PID</strong>.</li>
   </ol>
 </section>
-<script src="/static/tracking.js?v=pid-rosbridge-5"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-7"></script>
 {% endblock %}

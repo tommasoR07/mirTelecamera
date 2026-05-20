@@ -48,18 +48,10 @@
       <div class="row small"><span>angular.z</span><strong id="rosAngularValue">0.28</strong></div>
     </div>
   </div>
-  <label class="inline-check joystick-mode-toggle"><input id="rosArrowMode" type="checkbox"> Modalita frecce</label>
-  <div class="joystick-stage" id="rosJoystick">
+  <div class="joystick-stage" id="rosJoystick" role="application" aria-label="Joystick manuale">
     <div class="joystick-cross horizontal"></div>
     <div class="joystick-cross vertical"></div>
     <div class="joystick-knob" id="rosJoystickKnob"></div>
-  </div>
-  <div class="drive-pad joystick-lab-pad hidden" id="rosArrowPad">
-    <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="0" id="rosStopCenter">STOP</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="1" data-angular="0" id="rosForward">UP</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="-1" data-angular="0" id="rosBackward">DOWN</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="1" id="rosLeft">LEFT</button>
-    <button class="btn drive-btn ros-drive-btn" data-linear="0" data-angular="-1" id="rosRight">RIGHT</button>
   </div>
   <div class="row wrap">
     <button class="btn danger" id="rosStopBtn" type="button">Stop publish</button>
@@ -75,5 +67,5 @@
   <pre id="rosLog" class="hidden">Pronto.</pre>
 </section>
 
-<script src="/static/joystick_lab.js?v=rosbridge-lab-7"></script>
+<script src="/static/joystick_lab.js?v=rosbridge-lab-8"></script>
 {% endblock %}
