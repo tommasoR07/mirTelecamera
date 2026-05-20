@@ -50,6 +50,9 @@
       distancePrev: 0,
       offsetIntegral: 0,
       offsetPrev: 0,
+      filteredOffset: null,
+      visibleFrames: 0,
+      missedFrames: 0,
     };
   }
 
@@ -248,13 +251,17 @@
 
     const desired = number(desiredRatioInput, 18) / 100;
     const sizeRatio = Number(command.size_ratio);
-    const offset = Number(command.offset_x);
-    if (!Number.isFinite(sizeRatio) || !Number.isFinite(offset)) return { linear: 0, angular: 0 };
+    const rawOffset = Number(command.offset_x);
+    if (!Number.isFinite(sizeRatio) || !Number.isFinite(rawOffset)) return { linear: 0, angular: 0 };
+    pid.filteredOffset = pid.filteredOffset === null
+      ? rawOffset
+      : pid.filteredOffset * 0.72 + rawOffset * 0.28;
+    const offset = pid.filteredOffset;
 
     const distanceError = desired - sizeRatio;
     const offsetError = offset;
     const distanceDeadband = 0.030;
-    const offsetDeadband = 0.050;
+    const offsetDeadband = 0.110;
 
     pid.distanceIntegral = clamp(pid.distanceIntegral + distanceError * dt, -0.35, 0.35);
     pid.offsetIntegral = clamp(pid.offsetIntegral + offsetError * dt, -0.45, 0.45);
@@ -278,12 +285,11 @@
     }
 
     let angular = 0;
-    if (Math.abs(offsetError) > offsetDeadband) {
+    if (pid.visibleFrames >= 2 && Math.abs(offsetError) > offsetDeadband) {
       const effort =
-        number(pidInputs.angularKp, 6.5) * Math.abs(offsetError) +
-        number(pidInputs.angularKi, 0) * Math.abs(pid.offsetIntegral) +
-        number(pidInputs.angularKd, 0.55) * Math.abs(offsetDerivative);
-      angular = -Math.sign(offsetError) * maxAngular * clamp(effort, 0.25, 1);
+        number(pidInputs.angularKp, 6.5) * (Math.abs(offsetError) - offsetDeadband) +
+        number(pidInputs.angularKi, 0) * Math.abs(pid.offsetIntegral);
+      angular = -Math.sign(offsetError) * maxAngular * clamp(effort, 0.18, 1);
     }
 
     linear = clamp(linear, -maxLinear * 0.20, maxLinear);
@@ -298,17 +304,23 @@
       setText(offsetEl, '-');
       setText(ratioEl, '-');
       drawGuide();
-      if (followEnabled && performance.now() - lastSeenAt > 450) stopRobot();
+      pid.missedFrames += 1;
+      pid.visibleFrames = 0;
+      if (followEnabled) stopRobot();
       return null;
     }
     const tag = data.tag || null;
     drawTag(tag);
     if (!tag) {
       setText(targetStateEl, selectedTagId === null ? 'nessun AprilTag rilevato' : `AprilTag ID ${selectedTagId} non visibile`);
-      if (followEnabled && performance.now() - lastSeenAt > 450) stopRobot();
+      pid.missedFrames += 1;
+      pid.visibleFrames = 0;
+      if (followEnabled) stopRobot();
       return null;
     }
     lastSeenAt = performance.now();
+    pid.visibleFrames += 1;
+    pid.missedFrames = 0;
     if (selectedTagId !== null) setText(tagIdEl, selectedTagId);
     const cmd = data.command || {};
     setText(targetStateEl, `rilevato AprilTag ID ${tag.id}`);

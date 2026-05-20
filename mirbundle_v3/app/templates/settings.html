@@ -28,19 +28,6 @@
       <input name="camera_snapshot_url" value="{{ settings.camera_snapshot_url }}" placeholder="http://IP_TELEFONO:8080/shot.jpg">
     </label>
 
-    <hr class="sep">
-    <h2>Tracking AprilTag via joystick ROSBridge</h2>
-    <p class="note">Velocita lente per il PID automatico. Aumenta la dimensione target se vuoi che il MiR arrivi piu vicino al tag.</p>
-    <label>Dimensione target desiderata, percentuale frame
-      <input name="tracking_target_size_percent" value="{{ settings.tracking_target_size_percent or '32' }}" placeholder="32">
-    </label>
-    <label>Velocita lineare massima tracking
-      <input name="tracking_max_linear" value="{{ settings.tracking_max_linear or '1.50' }}" placeholder="1.50">
-    </label>
-    <label>Velocita angolare massima tracking
-      <input name="tracking_max_angular" value="{{ settings.tracking_max_angular or '1.50' }}" placeholder="1.50">
-    </label>
-
     <input type="hidden" name="drive_endpoint_path" value="">
     <input type="hidden" name="drive_http_method" value="POST">
     <input type="hidden" name="drive_body_template" value='{"linear": {{linear}}, "angular": {{angular}}}'>
