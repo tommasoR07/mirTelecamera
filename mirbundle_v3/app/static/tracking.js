@@ -9,6 +9,7 @@
   const startFollowBtn = $('startTagFollowBtn');
   const stopFollowBtn = $('stopFollowBtn');
   const clearBtn = $('clearTargetBtn');
+  const saveSettingsBtn = $('saveTrackingSettingsBtn');
   const streamUrlInput = $('streamUrlInput');
   const snapshotUrlInput = $('snapshotUrlInput');
   const mirHostInput = $('mirHostInput');
@@ -90,6 +91,7 @@
       pidHz: pidHzInput?.value || '30',
       detectWidth: detectWidthInput?.value || '640',
     }));
+    setText(followStateEl, 'valori tracking salvati');
   }
 
   function loadTrackingSettings() {
@@ -508,6 +510,7 @@
   maxAngularInput?.addEventListener('input', saveTrackingSettings);
   pidHzInput?.addEventListener('input', saveTrackingSettings);
   detectWidthInput?.addEventListener('input', saveTrackingSettings);
+  saveSettingsBtn?.addEventListener('click', saveTrackingSettings);
   document.querySelectorAll('.tracking-preset').forEach((button) => {
     button.addEventListener('click', () => applyPreset(button));
   });

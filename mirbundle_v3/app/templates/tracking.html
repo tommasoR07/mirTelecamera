@@ -34,7 +34,7 @@
         <input id="trackingTargetSize" type="number" min="12" max="80" step="1" value="32">
       </label>
       <div class="row small"><span>Dimensione tag desiderata</span><strong id="trackingTargetSizeValue">32%</strong></div>
-      <div class="grid two">
+      <div class="pid-input-grid">
         <label>Lineare max
           <input id="trackingLinearGain" type="number" min="0" max="5" step="0.01" value="1.50">
         </label>
@@ -47,6 +47,8 @@
         <button class="btn tracking-preset" data-hz="40" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">40 Hz</button>
         <button class="btn tracking-preset" data-hz="50" data-detect-width="720" data-linear="1.50" data-angular="1.50" type="button">50 Hz</button>
       </div>
+      <button class="btn success" id="saveTrackingSettingsBtn" type="button">Salva valori tracking</button>
+      <p class="note">Per 1080p, con AprilTag fisico da circa 16-18 cm, 1 metro di distanza tende a stare intorno al 16-22% del frame. Se il tag e' da 12 cm prova 12-16%; se e' da 20 cm prova 20-26%.</p>
       <input id="trackingPidHz" type="hidden" value="30">
       <input id="trackingDetectWidth" type="hidden" value="640">
       <input id="trackingPidLinearKp" type="hidden" value="7.50">
@@ -70,5 +72,5 @@
   </section>
 </div>
 
-<script src="/static/tracking.js?v=pid-rosbridge-7"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-8"></script>
 {% endblock %}

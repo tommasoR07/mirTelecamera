@@ -161,6 +161,11 @@ h3 { margin: 0 0 12px; }
 
 .grid { display: grid; gap: 18px; }
 .grid.two { grid-template-columns: minmax(0, 1.18fr) minmax(350px, .82fr); align-items: start; }
+.pid-input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
 .narrow { max-width: 780px; }
 .stack { display: grid; gap: 14px; }
 .stack-inline { display: flex; gap: 10px; align-items: start; }
@@ -338,6 +343,13 @@ input, select, textarea, button {
   background: rgba(8, 11, 15, .88);
   color: var(--text);
   font: inherit;
+}
+
+input[type="number"] {
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #f8fffc;
 }
 
 input:focus-visible,
@@ -574,6 +586,7 @@ pre {
   .main { padding: 18px 14px 34px; }
   .sidebar nav { grid-template-columns: 1fr; }
   .row.wrap { grid-template-columns: 1fr; }
+  .pid-input-grid { grid-template-columns: 1fr; }
   .kv > div { grid-template-columns: 1fr; gap: 5px; }
   h1 { font-size: 2.4rem; }
 }
