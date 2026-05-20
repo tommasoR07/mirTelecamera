@@ -288,6 +288,11 @@ def tracking_page(request: Request):
 
 
 
+@app.get('/joystick-lab', response_class=HTMLResponse)
+def joystick_lab_page(request: Request):
+    return render(request, 'joystick_lab.html')
+
+
 # Stato leggero in memoria per rendere il follow più fluido.
 # Evita di accodare micro-missioni diverse a ogni frame quando l'AprilTag vibra
 # vicino alla soglia sinistra/destra/avanti.

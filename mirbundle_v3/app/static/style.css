@@ -131,7 +131,13 @@ pre {
 #btnStopCenter { grid-column: 2; grid-row: 2; }
 #btnRight { grid-column: 3; grid-row: 2; }
 #btnBackward { grid-column: 2; grid-row: 3; }
+#rosForward { grid-column: 2; grid-row: 1; }
+#rosLeft { grid-column: 1; grid-row: 2; }
+#rosStopCenter { grid-column: 2; grid-row: 2; }
+#rosRight { grid-column: 3; grid-row: 2; }
+#rosBackward { grid-column: 2; grid-row: 3; }
 .drive-btn { font-size: 1.4rem; min-height: 72px; }
+.joystick-lab-pad { margin: 18px 0; }
 .row.wrap { flex-wrap: wrap; }
 .row.wrap > * { width: auto; min-width: 160px; }
 .row.small { justify-content: space-between; color: var(--muted); }
