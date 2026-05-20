@@ -53,6 +53,8 @@
       filteredOffset: null,
       visibleFrames: 0,
       missedFrames: 0,
+      angularBrakeUntil: 0,
+      lastOffsetSign: 0,
     };
   }
 
@@ -203,10 +205,10 @@
   function drawGuide() {
     if (!ensureCanvas()) return;
     const g = {
-      x: Math.round(overlay.width * 0.30),
-      y: Math.round(overlay.height * 0.22),
-      w: Math.round(overlay.width * 0.40),
-      h: Math.round(overlay.height * 0.50),
+      x: Math.round(overlay.width * 0.18),
+      y: Math.round(overlay.height * 0.12),
+      w: Math.round(overlay.width * 0.64),
+      h: Math.round(overlay.height * 0.72),
     };
     ctx.strokeStyle = 'rgba(59,130,246,0.95)';
     ctx.lineWidth = 4;
@@ -245,8 +247,9 @@
   }
 
   function computePid(command) {
-    const now = performance.now() / 1000;
-    const dt = pid.lastTs ? clamp(now - pid.lastTs, 0.03, 0.30) : 0.10;
+    const nowMs = performance.now();
+    const now = nowMs / 1000;
+    const dt = pid.lastTs ? clamp(now - pid.lastTs, 0.02, 0.20) : 0.05;
     pid.lastTs = now;
 
     const desired = number(desiredRatioInput, 18) / 100;
@@ -261,7 +264,13 @@
     const distanceError = desired - sizeRatio;
     const offsetError = offset;
     const distanceDeadband = 0.030;
-    const offsetDeadband = 0.110;
+    const offsetDeadband = 0.130;
+    const offsetSign = Math.abs(offsetError) > offsetDeadband ? Math.sign(offsetError) : 0;
+    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.35) {
+      pid.angularBrakeUntil = nowMs + 220;
+      pid.offsetIntegral = 0;
+    }
+    if (offsetSign) pid.lastOffsetSign = offsetSign;
 
     pid.distanceIntegral = clamp(pid.distanceIntegral + distanceError * dt, -0.35, 0.35);
     pid.offsetIntegral = clamp(pid.offsetIntegral + offsetError * dt, -0.45, 0.45);
@@ -285,15 +294,18 @@
     }
 
     let angular = 0;
-    if (pid.visibleFrames >= 2 && Math.abs(offsetError) > offsetDeadband) {
+    if (nowMs < pid.angularBrakeUntil) {
+      angular = 0;
+    } else if (pid.visibleFrames >= 2 && Math.abs(offsetError) > offsetDeadband) {
       const effort =
         number(pidInputs.angularKp, 6.5) * (Math.abs(offsetError) - offsetDeadband) +
         number(pidInputs.angularKi, 0) * Math.abs(pid.offsetIntegral);
-      angular = -Math.sign(offsetError) * maxAngular * clamp(effort, 0.18, 1);
+      angular = -Math.sign(offsetError) * maxAngular * clamp(effort, 0, 1);
     }
 
     linear = clamp(linear, -maxLinear * 0.20, maxLinear);
-    angular = clamp(angular, -maxAngular, maxAngular);
+    const nearCenterLimit = maxAngular * clamp((Math.abs(offsetError) - offsetDeadband) / 0.45, 0, 1);
+    angular = clamp(angular, -nearCenterLimit, nearCenterLimit);
     return { linear, angular };
   }
 
@@ -428,7 +440,7 @@
       publishVelocity(out.linear, out.angular);
     }
     const elapsed = performance.now() - started;
-    followTimer = window.setTimeout(followLoop, Math.max(35, 95 - elapsed));
+    followTimer = window.setTimeout(followLoop, Math.max(20, 50 - elapsed));
   }
 
   function stopFollow() {

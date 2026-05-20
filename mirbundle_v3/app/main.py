@@ -539,10 +539,10 @@ def _detect_apriltags_from_jpeg(
 
     # Durante l'acquisizione scegli il tag più grande dentro il riquadro centrale.
     guide = {
-        'x': int(width * 0.30),
-        'y': int(height * 0.22),
-        'w': int(width * 0.40),
-        'h': int(height * 0.50),
+        'x': int(width * 0.18),
+        'y': int(height * 0.12),
+        'w': int(width * 0.64),
+        'h': int(height * 0.72),
     }
 
     def in_guide(tag: dict[str, Any]) -> bool:
