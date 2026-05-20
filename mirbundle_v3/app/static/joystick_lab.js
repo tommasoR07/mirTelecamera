@@ -81,7 +81,7 @@
     socketUrlInput.value = securePage
       ? `wss://${url.hostname}:443/rosbridge/`
       : `ws://${url.hostname}:9090`;
-    if (!sessionInput.value.trim()) sessionInput.value = `aruco_tracker_${Date.now()}`;
+    if (!sessionInput.value.trim()) sessionInput.value = 'MIRITISCUNEO';
   }
 
   function connect() {
@@ -144,7 +144,7 @@
 
   function requestManualControl() {
     if (!connected) return;
-    const webSessionId = (sessionInput.value || '').trim() || `aruco_tracker_${Date.now()}`;
+    const webSessionId = (sessionInput.value || '').trim() || 'MIRITISCUNEO';
     sessionInput.value = webSessionId;
     send({
       op: 'call_service',

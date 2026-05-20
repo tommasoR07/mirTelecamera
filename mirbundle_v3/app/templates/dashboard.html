@@ -2,6 +2,38 @@
 {% block title %}Dashboard{% endblock %}
 {% block content %}
 <h1>Dashboard robot</h1>
+
+<section class="robot-hero">
+  <div class="robot-viewport">
+    <model-viewer
+      src="/static/models/mir100-step.glb"
+      camera-controls
+      auto-rotate
+      rotation-per-second="18deg"
+      shadow-intensity="0.65"
+      exposure="0.95"
+      camera-orbit="35deg 64deg 4.6m"
+      field-of-view="32deg"
+      interaction-prompt="none"
+      aria-label="Modello 3D MiR 100"
+    >
+      <div class="robot-fallback" slot="poster">MiR 100 model</div>
+    </model-viewer>
+    <div class="hud-frame" aria-hidden="true">
+      <span></span><span></span><span></span><span></span>
+    </div>
+  </div>
+  <div class="robot-hud">
+    <p class="eyebrow">Live robot console</p>
+    <h2>{{ status.robot_name or 'MiR 100' }}</h2>
+    <dl class="hud-metrics">
+      <div><dt>State</dt><dd>{{ status.state_text or '-' }}</dd></div>
+      <div><dt>Battery</dt><dd>{{ status.battery_percentage or '-' }}%</dd></div>
+      <div><dt>Mode</dt><dd>{{ status.mode_text or status.mode_id or '-' }}</dd></div>
+    </dl>
+  </div>
+</section>
+
 <div class="grid two">
   <section class="card">
     <h2>Stato</h2>
@@ -61,4 +93,5 @@
     </div>
   </div>
 </section>
+<script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
 {% endblock %}
