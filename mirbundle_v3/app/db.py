@@ -25,8 +25,8 @@ DEFAULT_SETTINGS = {
     'manual_release_http_method': 'PUT',
     'manual_release_body_template': '{"state_id": 3}',
     'tracking_target_size_percent': '32',
-    'tracking_max_linear': '0.08',
-    'tracking_max_angular': '0.22',
+    'tracking_max_linear': '1.50',
+    'tracking_max_angular': '1.50',
 }
 
 
@@ -70,8 +70,8 @@ def init_db() -> None:
         _ensure_column(conn, 'settings', 'manual_release_http_method', 'TEXT', "'PUT'")
         _ensure_column(conn, 'settings', 'manual_release_body_template', 'TEXT', "'{\"state_id\": 3}'")
         _ensure_column(conn, 'settings', 'tracking_target_size_percent', 'TEXT', "'32'")
-        _ensure_column(conn, 'settings', 'tracking_max_linear', 'TEXT', "'0.08'")
-        _ensure_column(conn, 'settings', 'tracking_max_angular', 'TEXT', "'0.22'")
+        _ensure_column(conn, 'settings', 'tracking_max_linear', 'TEXT', "'1.50'")
+        _ensure_column(conn, 'settings', 'tracking_max_angular', 'TEXT', "'1.50'")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS workflows (
@@ -125,8 +125,8 @@ def save_settings(
     manual_release_http_method: str = 'PUT',
     manual_release_body_template: str = '{"state_id": 3}',
     tracking_target_size_percent: str = '32',
-    tracking_max_linear: str = '0.08',
-    tracking_max_angular: str = '0.22',
+    tracking_max_linear: str = '1.50',
+    tracking_max_angular: str = '1.50',
 ) -> None:
     with get_conn() as conn:
         conn.execute(

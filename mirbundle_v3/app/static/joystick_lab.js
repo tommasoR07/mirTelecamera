@@ -137,7 +137,7 @@
   }
 
   function values(linearScale, angularScale) {
-    const multiplier = turboOverride?.checked ? 1.5 : 1;
+    const multiplier = turboOverride?.checked ? 1.25 : 1;
     return {
       linear: Number((Number(linearInput.value || 0) * multiplier * linearScale).toFixed(4)),
       angular: Number((Number(angularInput.value || 0) * multiplier * angularScale).toFixed(4)),
@@ -206,7 +206,7 @@
   }
 
   function updateLabels() {
-    const multiplier = turboOverride?.checked ? 1.5 : 1;
+    const multiplier = turboOverride?.checked ? 1.25 : 1;
     setText(linearValue, `${(Number(linearInput.value || 0) * multiplier).toFixed(2)}${multiplier > 1 ? ' turbo' : ''}`);
     setText(angularValue, `${(Number(angularInput.value || 0) * multiplier).toFixed(2)}${multiplier > 1 ? ' turbo' : ''}`);
   }

@@ -96,8 +96,8 @@ def save_settings(
     manual_release_http_method: str = Form('PUT'),
     manual_release_body_template: str = Form('{"state_id": 3}'),
     tracking_target_size_percent: str = Form('32'),
-    tracking_max_linear: str = Form('0.08'),
-    tracking_max_angular: str = Form('0.22'),
+    tracking_max_linear: str = Form('1.50'),
+    tracking_max_angular: str = Form('1.50'),
 ):
     db.save_settings(
         host,
