@@ -1,10 +1,10 @@
 {% extends 'base.html' %}
 {% block title %}Joystick Lab{% endblock %}
 {% block content %}
-<h1>Joystick Lab ROSBridge</h1>
+<h1>Joystick manuale</h1>
 
 <section class="card">
-  <h2>Connessione WebSocket</h2>
+  <h2>ROSBridge</h2>
   <div class="grid two">
     <label>Robot host
       <input id="mirHostInput" value="{{ settings.host }}" placeholder="http://192.168.1.50">
@@ -23,11 +23,10 @@
     <button class="btn success" id="connectRosBtn" type="button">Connetti e prendi controllo</button>
     <button class="btn danger" id="disconnectRosBtn" type="button">Disconnetti</button>
   </div>
-  <p class="note">La pagina prepara automaticamente URL, sessione, advertise e richiesta manual control. Il token viene compilato appena il MiR lo restituisce.</p>
 </section>
 
 <section class="card">
-  <h2>Comando velocita</h2>
+  <h2>Velocita</h2>
   <div class="row wrap">
     <button class="btn ros-speed-profile active" data-linear="0.10" data-angular="0.28" type="button">Normale</button>
     <button class="btn ros-speed-profile" data-linear="0.18" data-angular="0.45" type="button">Veloce</button>
@@ -48,6 +47,10 @@
       <div class="row small"><span>angular.z</span><strong id="rosAngularValue">0.28</strong></div>
     </div>
   </div>
+</section>
+
+<section class="card">
+  <h2>Joystick</h2>
   <div class="joystick-stage" id="rosJoystick" role="application" aria-label="Joystick manuale">
     <div class="joystick-cross horizontal"></div>
     <div class="joystick-cross vertical"></div>

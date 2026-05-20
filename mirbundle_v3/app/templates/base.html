@@ -8,8 +8,11 @@
 </head>
 <body>
   <aside class="sidebar">
-    <div class="brand">MiR Tracking System</div>
-    <nav>
+    <div class="brand">
+      <span class="brand-mark">MIR</span>
+      <span class="brand-copy">Vision Control</span>
+    </div>
+    <nav aria-label="Navigazione principale">
       <a href="/">Dashboard</a>
       <a href="/missions">Missioni</a>
       <a href="/maps">Mappe / Localizzazione</a>
@@ -20,9 +23,9 @@
   </aside>
   <main class="main">
     <header class="topbar">
-      <div><strong>Host:</strong> {{ settings.host or 'non configurato' }}</div>
-      <div><strong>Mission group:</strong> {{ settings.mission_group_id or 'non impostato' }}</div>
-      <div><strong>Camera:</strong> {{ settings.camera_stream_url or 'non impostata' }}</div>
+      <div><span>Host</span><strong>{{ settings.host or 'non configurato' }}</strong></div>
+      <div><span>Mission group</span><strong>{{ settings.mission_group_id or 'non impostato' }}</strong></div>
+      <div><span>Camera</span><strong>{{ settings.camera_stream_url or 'non impostata' }}</strong></div>
     </header>
     {% if message %}<div class="alert success">{{ message }}</div>{% endif %}
     {% if error %}<div class="alert error">{{ error }}</div>{% endif %}

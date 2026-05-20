@@ -1,11 +1,10 @@
 {% extends 'base.html' %}
 {% block title %}Tracking AprilTag{% endblock %}
 {% block content %}
-<h1>Tracking AprilTag con joystick ROSBridge</h1>
+<h1>AprilTag autopilot</h1>
 <div class="grid two">
   <section class="card">
-    <h2>Camera e target</h2>
-    <p class="note">Usa solo AprilTag/Aruco. Il movimento automatico passa dal joystick ROSBridge.</p>
+    <h2>Visione</h2>
     <div class="stack">
       <label>Stream URL telefono
         <input id="streamUrlInput" value="{{ camera_stream_url }}" placeholder="http://IP_TELEFONO:8080/video">
@@ -29,7 +28,7 @@
   </section>
 
   <section class="card">
-    <h2>PID manuale</h2>
+    <h2>Controllo PID</h2>
     <div class="stack">
       <label>Distanza target desiderata, percentuale frame
         <input id="trackingTargetSize" type="number" min="12" max="80" step="1" value="32">
@@ -71,14 +70,5 @@
   </section>
 </div>
 
-<section class="card">
-  <h2>Come preparare la pettorina</h2>
-  <ol>
-    <li>Stampa un AprilTag grande e rigido, almeno 12-18 cm di lato.</li>
-    <li>Metti un tag davanti e uno dietro, meglio con lo stesso ID.</li>
-    <li>Entra nel riquadro blu con il tag ben illuminato e non piegato.</li>
-    <li>Quando l'app mostra l'ID acquisito, premi <strong>Segui con PID</strong>.</li>
-  </ol>
-</section>
 <script src="/static/tracking.js?v=pid-rosbridge-7"></script>
 {% endblock %}
