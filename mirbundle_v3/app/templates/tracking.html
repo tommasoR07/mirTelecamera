@@ -1,17 +1,20 @@
 {% extends 'base.html' %}
 {% block title %}Tracking AprilTag{% endblock %}
 {% block content %}
-<h1>AprilTag autopilot</h1>
-<div class="grid two">
-  <section class="card">
-    <h2>Visione</h2>
-    <div class="stack">
+<div class="dashboard-heading">
+  <p class="eyebrow">Vision PID profiler</p>
+  <h1>AprilTag Control</h1>
+  <p>Stream diretto, PID ROSBridge e diagnostica prestazioni in tempo reale.</p>
+</div>
+
+<div class="grid two tracking-shell">
+  <section class="card tracking-panel">
+    <h2>Camera live</h2>
+    <div class="tracking-controls">
       <label>Stream URL telefono
         <input id="streamUrlInput" value="{{ camera_stream_url }}" placeholder="http://IP_TELEFONO:8080/video">
       </label>
-      <label>Snapshot URL opzionale
-        <input id="snapshotUrlInput" value="{{ camera_snapshot_url }}" placeholder="lascia vuoto se usi MJPEG /video">
-      </label>
+      <input id="snapshotUrlInput" type="hidden" value="{{ camera_snapshot_url }}">
       <input id="mirHostInput" type="hidden" value="{{ settings.host }}">
       <div class="row wrap">
         <button class="btn" id="connectStreamBtn" type="button">Connetti stream</button>
@@ -26,10 +29,19 @@
       <img id="trackingStream" alt="Stream telefono">
       <canvas id="trackingOverlay"></canvas>
     </div>
+    <dl class="tracking-profiler" aria-label="Profiler tracking">
+      <div><dt>Loop</dt><dd id="profilerLoop">-</dd></div>
+      <div><dt>Fetch</dt><dd id="profilerFetch">-</dd></div>
+      <div><dt>Detect</dt><dd id="profilerDetect">-</dd></div>
+      <div><dt>Frame age</dt><dd id="profilerFrame">-</dd></div>
+      <div><dt>Miss</dt><dd id="profilerMiss">0</dd></div>
+      <div><dt>Dict</dt><dd id="profilerDict">-</dd></div>
+    </dl>
   </section>
 
-  <section class="card">
-    <h2>Controllo PID</h2>
+  <aside class="tracking-console">
+  <section class="card tracking-panel">
+    <h2>PID</h2>
     <div class="stack">
       <label>Distanza target desiderata, percentuale frame
         <input id="trackingTargetSize" type="number" min="12" max="80" step="1" value="{{ tracking_settings.targetSize or '32' }}">
@@ -47,9 +59,9 @@
         <button class="btn tracking-preset active" data-hz="30" data-detect-width="480" data-linear="1.50" data-angular="1.50" type="button">30 Hz</button>
         <button class="btn tracking-preset" data-hz="45" data-detect-width="560" data-linear="1.50" data-angular="1.50" type="button">45 Hz</button>
         <button class="btn tracking-preset" data-hz="60" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">60 Hz</button>
+        <button class="btn tracking-preset" data-hz="45" data-detect-width="0" data-linear="1.50" data-angular="1.50" type="button">Nativo</button>
       </div>
       <button class="btn success" id="saveTrackingSettingsBtn" type="button">Salva valori tracking</button>
-      <p class="note">Per 1080p, con AprilTag fisico da circa 16-18 cm, 1 metro di distanza tende a stare intorno al 16-22% del frame. Se il tag e' da 12 cm prova 12-16%; se e' da 20 cm prova 20-26%.</p>
       <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '45' }}">
       <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '560' }}">
       <input id="trackingPidLinearKp" type="hidden" value="7.50">
@@ -59,7 +71,11 @@
       <input id="trackingPidAngularKi" type="hidden" value="0.00">
       <input id="trackingPidAngularKd" type="hidden" value="0.00">
     </div>
-    <dl class="kv compact" id="trackingStats">
+  </section>
+
+  <section class="card tracking-panel">
+    <h2>Stato</h2>
+    <dl class="tracking-status-grid" id="trackingStats">
       <div><dt>Stream</dt><dd id="trackingStreamState">non connesso</dd></div>
       <div><dt>ROSBridge</dt><dd id="trackingRosState">non connesso</dd></div>
       <div><dt>Target</dt><dd id="trackingTargetState">non acquisito</dd></div>
@@ -73,7 +89,8 @@
       <div><dt>Follow</dt><dd id="trackingFollowState">spento</dd></div>
     </dl>
   </section>
+  </aside>
 </div>
 
-<script src="/static/tracking.js?v=pid-rosbridge-15"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-17"></script>
 {% endblock %}

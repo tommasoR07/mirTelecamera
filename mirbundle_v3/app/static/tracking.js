@@ -25,6 +25,12 @@
   const perfEl = $('trackingPerf');
   const commandEl = $('trackingCommand');
   const followStateEl = $('trackingFollowState');
+  const profilerLoopEl = $('profilerLoop');
+  const profilerFetchEl = $('profilerFetch');
+  const profilerDetectEl = $('profilerDetect');
+  const profilerFrameEl = $('profilerFrame');
+  const profilerMissEl = $('profilerMiss');
+  const profilerDictEl = $('profilerDict');
   const desiredRatioInput = $('trackingTargetSize');
   const desiredRatioValue = $('trackingTargetSizeValue');
   const maxLinearInput = $('trackingLinearGain');
@@ -57,6 +63,7 @@
   let lastOverlayAt = 0;
   let lastBackendFrameId = 0;
   let selectedTagDictionary = '';
+  let lastTag = null;
   let pid = resetPid();
 
   function resetPid() {
@@ -449,6 +456,15 @@
     pid.missedFrames = 0;
     const cmd = data.command || {};
     if (tag.dictionary) selectedTagDictionary = tag.dictionary;
+    lastTag = {
+      x: tag.x,
+      y: tag.y,
+      w: tag.w,
+      h: tag.h,
+      cx: tag.cx,
+      cy: tag.cy,
+      side: tag.side,
+    };
     if (renderUi) {
       if (selectedTagId !== null) setText(tagIdEl, selectedTagId);
       setText(targetStateEl, `rilevato AprilTag ID ${tag.id}${tag.dictionary ? ` | ${tag.dictionary}` : ''}`);
@@ -472,12 +488,25 @@
       target_id: selectedTagId,
       target_dictionary: selectedTagDictionary,
       missed_frames: pid.missedFrames,
+      last_tag: lastTag,
       desired_size_ratio: number(desiredRatioInput, 18) / 100,
       max_linear: number(maxLinearInput, 0.18),
       max_angular: number(maxAngularInput, 0.45),
-      max_detect_width: Math.max(320, Math.min(1080, number(detectWidthInput, 640))),
+      max_detect_width: Math.max(0, Math.min(1080, number(detectWidthInput, 560))),
       last_frame_id: lastBackendFrameId,
     };
+  }
+
+  function updateProfiler(data, fetchMs = 0) {
+    const perf = data?.perf || {};
+    const loopHz = pid.lastLoopMs ? `${(1000 / pid.lastLoopMs).toFixed(1)} Hz` : '-';
+    setText(profilerLoopEl, loopHz);
+    setText(profilerFetchEl, fetchMs ? `${fetchMs.toFixed(1)} ms` : '-');
+    setText(profilerDetectEl, perf.detect_ms !== undefined ? `${perf.detect_ms} ms` : '-');
+    setText(profilerFrameEl, perf.frame_age_ms !== undefined ? `${perf.frame_age_ms} ms` : '-');
+    setText(profilerMissEl, `${pid.missedFrames}`);
+    const roiSuffix = data?.fast_roi ? ' ROI' : '';
+    setText(profilerDictEl, `${selectedTagDictionary || data?.tag?.dictionary || '-'}${roiSuffix}`);
   }
 
   async function tagStep(acquireTarget) {
@@ -487,12 +516,14 @@
     const renderUi = acquireTarget || now - lastUiAt > 66;
     if (renderUi) lastUiAt = now;
     try {
+      const fetchStarted = performance.now();
       const res = await fetch('/api/tracking/apriltag-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(currentPayload(acquireTarget)),
       });
       const text = await res.text();
+      const fetchMs = performance.now() - fetchStarted;
       let data;
       try { data = JSON.parse(text); } catch (_) { data = { ok: false, error: text || `HTTP ${res.status}` }; }
       if (data.ok && data.acquired_tag_id !== undefined && data.acquired_tag_id !== null) {
@@ -501,10 +532,13 @@
         setText(tagIdEl, selectedTagId);
       }
       if (data.perf?.frame_id) lastBackendFrameId = Number(data.perf.frame_id) || lastBackendFrameId;
-      return updateStats(data, renderUi);
+      const cmd = updateStats(data, renderUi);
+      updateProfiler(data, fetchMs);
+      return cmd;
     } catch (err) {
       setText(targetStateEl, `errore chiamata backend: ${err}`);
       drawGuide();
+      updateProfiler(null, 0);
       return null;
     } finally {
       busy = false;
@@ -518,18 +552,17 @@
       return;
     }
     if (/^(rtsp|rtmp):\/\//i.test(url)) {
-      streamImg.src = `/api/tracking/camera-stream?fps=30&url=${encodeURIComponent(url)}`;
-      setText(streamStateEl, 'stream backend live connesso');
-      setTimeout(drawGuide, 600);
+      setText(streamStateEl, 'RTSP usato solo dal detector; preview browser non disponibile');
+      drawGuide();
       return;
     }
     const isMjpeg = /\/(stream|mjpeg|mjpg|video|video_feed)\b/i.test(url) || /[?&]action=stream/i.test(url);
     streamImg.onerror = () => setText(streamStateEl, isMjpeg ? 'errore stream camera' : 'errore snapshot');
     streamImg.onload = () => {
-      setText(streamStateEl, isMjpeg ? 'stream backend live connesso' : 'snapshot connesso');
+      setText(streamStateEl, isMjpeg ? 'stream diretto live' : 'snapshot connesso');
       drawGuide();
     };
-    streamImg.src = isMjpeg ? `/api/tracking/camera-stream?fps=30&url=${encodeURIComponent(url)}` : `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    streamImg.src = isMjpeg ? url : `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
     setTimeout(drawGuide, 600);
   }
 
@@ -538,6 +571,7 @@
     window.clearTimeout(followTimer);
     selectedTagId = null;
     selectedTagDictionary = '';
+    lastTag = null;
     lastBackendFrameId = 0;
     pid = resetPid();
     setText(tagIdEl, '-');
@@ -596,6 +630,7 @@
     stopRobot();
     selectedTagId = null;
     selectedTagDictionary = '';
+    lastTag = null;
     pid = resetPid();
     busy = false;
     advertised = false;
@@ -638,6 +673,7 @@
   clearBtn?.addEventListener('click', () => {
     selectedTagId = null;
     selectedTagDictionary = '';
+    lastTag = null;
     pid = resetPid();
     setText(tagIdEl, '-');
     setText(targetStateEl, 'target rimosso');

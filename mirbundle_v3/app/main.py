@@ -12,7 +12,7 @@ import httpx
 from fastapi import Body
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -505,6 +505,10 @@ def _get_apriltag_detector(cv2, dictionary_name: str):
             params.aprilTagQuadDecimate = 1.0
         if hasattr(params, 'aprilTagQuadSigma'):
             params.aprilTagQuadSigma = 0.0
+        if hasattr(params, 'useAruco3Detection'):
+            params.useAruco3Detection = True
+        if hasattr(params, 'detectInvertedMarker'):
+            params.detectInvertedMarker = False
         detector = ('new', aruco.ArucoDetector(dictionary, params), None)
     except Exception:
         params = aruco.DetectorParameters_create()
@@ -530,29 +534,6 @@ def _stream_frame_meta() -> dict[str, Any]:
     with _STREAM_FRAME_CACHE.lock:
         age_ms = (time.time() - _STREAM_FRAME_CACHE.last_frame_ts) * 1000 if _STREAM_FRAME_CACHE.last_frame_ts else None
         return {'frame_age_ms': round(age_ms, 1) if age_ms is not None else None, 'frame_id': _STREAM_FRAME_CACHE.frame_id}
-
-
-def _camera_stream_generator(url: str, fps: int = 30):
-    cv2, _ = _load_cv2()
-    frame_delay = 1.0 / max(1, min(60, fps))
-    last_id = 0
-    while True:
-        started = time.perf_counter()
-        frame = _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=1.0, min_frame_id=last_id)
-        with _STREAM_FRAME_CACHE.lock:
-            last_id = _STREAM_FRAME_CACHE.frame_id
-        encoded, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 68])
-        if encoded:
-            yield (
-                b'--frame\r\n'
-                b'Content-Type: image/jpeg\r\n'
-                b'Cache-Control: no-store\r\n\r\n' +
-                buffer.tobytes() +
-                b'\r\n'
-            )
-        elapsed = time.perf_counter() - started
-        if elapsed < frame_delay:
-            time.sleep(frame_delay - elapsed)
 
 
 async def _download_snapshot(url: str, stream_url: str = '') -> bytes:
@@ -611,6 +592,7 @@ def _detect_apriltags_from_frame(
     frame,
     target_id: int | None = None,
     target_dictionary: str = '',
+    previous_tag: dict[str, Any] | None = None,
     acquire_target: bool = False,
     max_detect_width: int = 640,
     allow_dictionary_fallback: bool = True,
@@ -619,12 +601,34 @@ def _detect_apriltags_from_frame(
         raise RuntimeError('Frame camera non disponibile.')
     cv2, _ = _load_cv2()
     height, width = frame.shape[:2]
-    detect_frame = frame
+    roi_x = 0
+    roi_y = 0
+    roi_w = width
+    roi_h = height
+    fast_roi = False
+    if target_id is not None and not acquire_target and previous_tag:
+        try:
+            prev_cx = float(previous_tag.get('cx', 0))
+            prev_cy = float(previous_tag.get('cy', 0))
+            prev_side = max(float(previous_tag.get('side', 0)), float(previous_tag.get('w', 0)), float(previous_tag.get('h', 0)))
+            if prev_cx > 0 and prev_cy > 0 and prev_side > 8:
+                roi_side = max(260.0, min(float(max(width, height)), prev_side * 5.2))
+                roi_x = max(0, int(round(prev_cx - roi_side / 2)))
+                roi_y = max(0, int(round(prev_cy - roi_side / 2)))
+                roi_w = min(width - roi_x, int(round(roi_side)))
+                roi_h = min(height - roi_y, int(round(roi_side)))
+                if roi_w >= 120 and roi_h >= 120 and roi_w * roi_h < width * height * 0.72:
+                    fast_roi = True
+        except Exception:
+            fast_roi = False
+    detect_frame = frame[roi_y:roi_y + roi_h, roi_x:roi_x + roi_w] if fast_roi else frame
     scale = 1.0
-    if max_detect_width > 0 and width > max_detect_width:
-        scale = width / float(max_detect_width)
-        detect_height = max(1, int(round(height / scale)))
-        detect_frame = cv2.resize(frame, (max_detect_width, detect_height), interpolation=cv2.INTER_AREA)
+    detect_base_width = detect_frame.shape[1]
+    detect_base_height = detect_frame.shape[0]
+    if max_detect_width > 0 and detect_base_width > max_detect_width:
+        scale = detect_base_width / float(max_detect_width)
+        detect_height = max(1, int(round(detect_base_height / scale)))
+        detect_frame = cv2.resize(detect_frame, (max_detect_width, detect_height), interpolation=cv2.INTER_AREA)
     gray = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2GRAY)
 
     if not hasattr(cv2, 'aruco'):
@@ -643,44 +647,61 @@ def _detect_apriltags_from_frame(
         dict_names = all_dict_names
     if target_id is not None and not acquire_target and not allow_dictionary_fallback and preferred in all_dict_names:
         dict_names = [preferred]
-    detections: list[dict[str, Any]] = []
-    for name in dict_names:
-        if not hasattr(aruco, name):
-            continue
-        detector_kind, detector, params = _get_apriltag_detector(cv2, name)
-        if detector_kind == 'new':
-            corners, ids, _ = detector.detectMarkers(gray)
-        else:
-            corners, ids, _ = aruco.detectMarkers(gray, detector, parameters=params)
-        if ids is None or len(ids) == 0:
-            continue
-        for i, marker_corners in enumerate(corners):
-            pts = marker_corners.reshape((4, 2)).astype(float) * scale
-            xs = pts[:, 0]
-            ys = pts[:, 1]
-            x = int(xs.min())
-            y = int(ys.min())
-            w = int(xs.max() - xs.min())
-            h = int(ys.max() - ys.min())
-            tag_id = int(ids[i][0])
-            cx = float(xs.mean())
-            cy = float(ys.mean())
-            side = float(max(w, h))
-            detections.append({
-                'id': tag_id,
-                'dictionary': name.replace('DICT_', ''),
-                'x': x,
-                'y': y,
-                'w': w,
-                'h': h,
-                'cx': round(cx, 2),
-                'cy': round(cy, 2),
-                'side': round(side, 2),
-                'area': int(max(1, w * h)),
-                'corners': [[round(float(px), 2), round(float(py), 2)] for px, py in pts.tolist()],
-            })
-        if detections:
-            break
+    def run_detection(gray_image, scale_factor: float, offset_x: int, offset_y: int) -> list[dict[str, Any]]:
+        found: list[dict[str, Any]] = []
+        for name in dict_names:
+            if not hasattr(aruco, name):
+                continue
+            detector_kind, detector, params = _get_apriltag_detector(cv2, name)
+            if detector_kind == 'new':
+                corners, ids, _ = detector.detectMarkers(gray_image)
+            else:
+                corners, ids, _ = aruco.detectMarkers(gray_image, detector, parameters=params)
+            if ids is None or len(ids) == 0:
+                continue
+            for i, marker_corners in enumerate(corners):
+                pts = marker_corners.reshape((4, 2)).astype(float) * scale_factor
+                if offset_x or offset_y:
+                    pts[:, 0] += offset_x
+                    pts[:, 1] += offset_y
+                xs = pts[:, 0]
+                ys = pts[:, 1]
+                x = int(xs.min())
+                y = int(ys.min())
+                w = int(xs.max() - xs.min())
+                h = int(ys.max() - ys.min())
+                tag_id = int(ids[i][0])
+                cx = float(xs.mean())
+                cy = float(ys.mean())
+                side = float(max(w, h))
+                found.append({
+                    'id': tag_id,
+                    'dictionary': name.replace('DICT_', ''),
+                    'x': x,
+                    'y': y,
+                    'w': w,
+                    'h': h,
+                    'cx': round(cx, 2),
+                    'cy': round(cy, 2),
+                    'side': round(side, 2),
+                    'area': int(max(1, w * h)),
+                    'corners': [[round(float(px), 2), round(float(py), 2)] for px, py in pts.tolist()],
+                })
+            if found:
+                break
+        return found
+
+    detections = run_detection(gray, scale, roi_x if fast_roi else 0, roi_y if fast_roi else 0)
+    if fast_roi and not detections:
+        fast_roi = False
+        detect_frame = frame
+        scale = 1.0
+        if max_detect_width > 0 and width > max_detect_width:
+            scale = width / float(max_detect_width)
+            detect_height = max(1, int(round(height / scale)))
+            detect_frame = cv2.resize(detect_frame, (max_detect_width, detect_height), interpolation=cv2.INTER_AREA)
+        gray = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2GRAY)
+        detections = run_detection(gray, scale, 0, 0)
 
     # Durante l'acquisizione scegli il tag più grande dentro il riquadro centrale.
     guide = {
@@ -711,6 +732,7 @@ def _detect_apriltags_from_frame(
         'tag': tag,
         'acquired_tag_id': tag['id'] if acquire_target and tag else None,
         'acquired_tag_dictionary': tag['dictionary'] if acquire_target and tag else None,
+        'fast_roi': fast_roi,
     }
 
 
@@ -757,6 +779,7 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
     target_id_raw = payload.get('target_id', None)
     target_dictionary = str(payload.get('target_dictionary') or '').strip()
     missed_frames = int(payload.get('missed_frames') or 0)
+    previous_tag = payload.get('last_tag') if isinstance(payload.get('last_tag'), dict) else None
     target_id: int | None = None
     if target_id_raw not in (None, '', 'null'):
         try:
@@ -766,7 +789,11 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
     desired_size_ratio = float(payload.get('desired_size_ratio') or 0.18)
     max_linear = float(payload.get('max_linear') or 0.12)
     max_angular = float(payload.get('max_angular') or 0.35)
-    max_detect_width = int(payload.get('max_detect_width') or 640)
+    max_detect_width_raw = payload.get('max_detect_width', 640)
+    try:
+        max_detect_width = int(max_detect_width_raw)
+    except Exception:
+        max_detect_width = 640
     last_frame_id = int(payload.get('last_frame_id') or 0)
     result: dict[str, Any] = {'ok': False, 'target_id': target_id}
     try:
@@ -776,6 +803,7 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
             frame,
             target_id=target_id,
             target_dictionary=target_dictionary,
+            previous_tag=previous_tag if missed_frames <= 1 else None,
             acquire_target=acquire_target,
             max_detect_width=max_detect_width,
             allow_dictionary_fallback=acquire_target or missed_frames >= 2,
@@ -786,15 +814,6 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
         return result
     except Exception as exc:
         return {'ok': False, 'error': str(exc), 'command': {'linear': 0.0, 'angular': 0.0, 'suggestion': 'errore: stop'}}
-
-
-@app.get('/api/tracking/camera-stream')
-def tracking_camera_stream(url: str, fps: int = 30):
-    return StreamingResponse(
-        _camera_stream_generator(url, fps),
-        media_type='multipart/x-mixed-replace; boundary=frame',
-        headers={'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'},
-    )
 
 
 @app.post('/api/tracking/stop')
