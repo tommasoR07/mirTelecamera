@@ -5,6 +5,7 @@ from urllib.parse import quote
 from typing import Any
 import asyncio
 import json
+import os
 import threading
 import time
 
@@ -30,9 +31,12 @@ DEFAULT_TRACKING_SETTINGS: dict[str, Any] = {
     'targetSize': '32',
     'maxLinear': '1.50',
     'maxAngular': '1.50',
-    'pidHz': '45',
-    'detectWidth': '560',
+    'pidHz': '90',
+    'detectWidth': '720',
 }
+
+_CV_CACHE: tuple[Any, Any] | None = None
+_CV_LOCK = threading.Lock()
 
 
 def redirect(path: str) -> RedirectResponse:
@@ -327,13 +331,24 @@ def tracking_settings_save(payload: dict[str, Any] = Body(default_factory=dict))
 
 # ---------------- Tracking AprilTag + follow ----------------
 def _load_cv2():
-    try:
-        import cv2  # type: ignore
-        import numpy as np  # type: ignore
-        return cv2, np
-    except Exception as exc:  # pragma: no cover
-        raise RuntimeError('OpenCV non installato. Esegui: pip install -r requirements.txt') from exc
-
+    global _CV_CACHE
+    if _CV_CACHE is not None:
+        return _CV_CACHE
+    with _CV_LOCK:
+        if _CV_CACHE is not None:
+            return _CV_CACHE
+        try:
+            import cv2  # type: ignore
+            import numpy as np  # type: ignore
+            try:
+                cv2.setUseOptimized(True)
+                cv2.setNumThreads(max(2, min(12, os.cpu_count() or 8)))
+            except Exception:
+                pass
+            _CV_CACHE = (cv2, np)
+            return _CV_CACHE
+        except Exception as exc:  # pragma: no cover
+            raise RuntimeError('OpenCV non installato. Esegui: pip install -r requirements.txt') from exc
 
 def _is_video_stream_url(url: str) -> bool:
     clean = (url or '').strip().lower()
@@ -348,6 +363,7 @@ def _is_video_stream_url(url: str) -> bool:
 class _StreamFrameCache:
     def __init__(self) -> None:
         self.lock = threading.Lock()
+        self.frame_ready = threading.Condition(self.lock)
         self.url = ''
         self.capture = None
         self.thread: threading.Thread | None = None
@@ -380,12 +396,13 @@ class _StreamFrameCache:
         deadline = time.time() + wait_seconds
         fallback = None
         while time.time() < deadline:
-            with self.lock:
+            remaining = max(0.0, deadline - time.time())
+            with self.frame_ready:
                 if self.url == url and self.frame is not None and self.frame_id > min_frame_id:
                     return self.frame.copy()
                 fallback = self.frame.copy() if self.url == url and self.frame is not None else None
                 last_error = self.last_error
-            time.sleep(0.004)
+                self.frame_ready.wait(timeout=min(0.012, remaining))
         if fallback is not None:
             return fallback
         raise RuntimeError(last_error or f'Nessun frame disponibile dallo stream: {url}')
@@ -408,6 +425,7 @@ class _StreamFrameCache:
 
     def _stop_locked(self) -> None:
         self.running = False
+        self.frame_ready.notify_all()
         capture = self.capture
         self.capture = None
         if capture is not None:
@@ -458,6 +476,7 @@ class _StreamFrameCache:
                         self.last_frame_ts = time.time()
                         self.frame_id += 1
                         self.last_error = ''
+                        self.frame_ready.notify_all()
         finally:
             with self.lock:
                 if self.capture is cap:
@@ -469,6 +488,56 @@ class _StreamFrameCache:
 
 _STREAM_FRAME_CACHE = _StreamFrameCache()
 _APRILTAG_DETECTORS: dict[str, Any] = {}
+
+
+class _TrackerState:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.target_id: int | None = None
+        self.dictionary = ''
+        self.last_tag: dict[str, Any] | None = None
+        self.missed_frames = 0
+        self.last_seen_ts = 0.0
+
+    def snapshot(self, target_id: int | None, dictionary: str, previous_tag: dict[str, Any] | None, missed_frames: int) -> tuple[str, dict[str, Any] | None, int]:
+        with self.lock:
+            if target_id is not None and self.target_id == target_id:
+                dictionary = dictionary or self.dictionary
+                previous_tag = previous_tag or self.last_tag
+                missed_frames = max(missed_frames, self.missed_frames)
+            return dictionary, previous_tag, missed_frames
+
+    def update(self, target_id: int | None, tag: dict[str, Any] | None) -> None:
+        with self.lock:
+            if tag:
+                self.target_id = int(tag['id'])
+                self.dictionary = str(tag.get('dictionary') or self.dictionary)
+                self.last_tag = {
+                    'x': tag.get('x'),
+                    'y': tag.get('y'),
+                    'w': tag.get('w'),
+                    'h': tag.get('h'),
+                    'cx': tag.get('cx'),
+                    'cy': tag.get('cy'),
+                    'side': tag.get('side'),
+                }
+                self.missed_frames = 0
+                self.last_seen_ts = time.time()
+            elif target_id is not None and self.target_id == target_id:
+                self.missed_frames += 1
+                if self.missed_frames > 8:
+                    self.last_tag = None
+
+    def reset(self) -> None:
+        with self.lock:
+            self.target_id = None
+            self.dictionary = ''
+            self.last_tag = None
+            self.missed_frames = 0
+            self.last_seen_ts = 0.0
+
+
+_TRACKER_STATE = _TrackerState()
 
 
 def _get_snapshot_http_client() -> httpx.AsyncClient:
@@ -798,7 +867,9 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
     result: dict[str, Any] = {'ok': False, 'target_id': target_id}
     try:
         started = time.perf_counter()
+        target_dictionary, previous_tag, missed_frames = _TRACKER_STATE.snapshot(target_id, target_dictionary, previous_tag, missed_frames)
         frame = await _load_tracking_frame(snapshot_url, stream_url, last_frame_id)
+        loaded = time.perf_counter()
         detection = _detect_apriltags_from_frame(
             frame,
             target_id=target_id,
@@ -808,9 +879,20 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
             max_detect_width=max_detect_width,
             allow_dictionary_fallback=acquire_target or missed_frames >= 2,
         )
-        detect_ms = (time.perf_counter() - started) * 1000
+        detected = time.perf_counter()
+        _TRACKER_STATE.update(target_id, detection['tag'])
         command = _compute_tag_tracking_command(detection['tag'], detection['width'], detection['height'], desired_size_ratio, max_linear, max_angular)
-        result.update({'ok': True, **detection, 'command': command, 'perf': {'detect_ms': round(detect_ms, 1), **_stream_frame_meta()}})
+        result.update({
+            'ok': True,
+            **detection,
+            'command': command,
+            'perf': {
+                'load_ms': round((loaded - started) * 1000, 1),
+                'detect_ms': round((detected - loaded) * 1000, 1),
+                'total_ms': round((detected - started) * 1000, 1),
+                **_stream_frame_meta(),
+            },
+        })
         return result
     except Exception as exc:
         return {'ok': False, 'error': str(exc), 'command': {'linear': 0.0, 'angular': 0.0, 'suggestion': 'errore: stop'}}
@@ -824,6 +906,7 @@ async def tracking_stop():
 @app.post('/api/tracking/reset')
 async def tracking_reset():
     _STREAM_FRAME_CACHE.stop()
+    _TRACKER_STATE.reset()
     return {'ok': True, 'message': 'Tracking e cache camera resettati'}
 
 

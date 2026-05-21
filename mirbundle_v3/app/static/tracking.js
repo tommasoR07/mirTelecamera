@@ -61,6 +61,8 @@
   let lastSeenAt = 0;
   let lastUiAt = 0;
   let lastOverlayAt = 0;
+  let lastBrakeAt = 0;
+  let lastCommandUiAt = 0;
   let lastBackendFrameId = 0;
   let selectedTagDictionary = '';
   let lastTag = null;
@@ -102,8 +104,8 @@
       targetSize: desiredRatioInput?.value || '32',
       maxLinear: maxLinearInput?.value || '1.50',
       maxAngular: maxAngularInput?.value || '1.50',
-      pidHz: pidHzInput?.value || '45',
-      detectWidth: detectWidthInput?.value || '560',
+      pidHz: pidHzInput?.value || '90',
+      detectWidth: detectWidthInput?.value || '720',
     };
   }
 
@@ -266,8 +268,12 @@
       },
     });
     if (ok) {
-      const suffix = mode ? ` | ${mode}` : '';
-      setText(commandEl, `linear=${linear.toFixed(3)} angular=${angular.toFixed(3)}${suffix}`);
+      const now = performance.now();
+      if (now - lastCommandUiAt > 100 || (linear === 0 && angular === 0)) {
+        lastCommandUiAt = now;
+        const suffix = mode ? ` | ${mode}` : '';
+        setText(commandEl, `linear=${linear.toFixed(3)} angular=${angular.toFixed(3)}${suffix}`);
+      }
     }
     return ok;
   }
@@ -278,6 +284,9 @@
   }
 
   function safeBrake(mode = 'ricerca target') {
+    const now = performance.now();
+    if (now - lastBrakeAt < 90) return;
+    lastBrakeAt = now;
     publishVelocity(0, 0, mode);
   }
 
@@ -307,7 +316,7 @@
 
   function drawTag(tag) {
     const now = performance.now();
-    if (now - lastOverlayAt < 45) return;
+    if (now - lastOverlayAt < 70) return;
     lastOverlayAt = now;
     if (!ensureCanvas()) return;
     drawGuide();
@@ -492,7 +501,7 @@
       desired_size_ratio: number(desiredRatioInput, 18) / 100,
       max_linear: number(maxLinearInput, 0.18),
       max_angular: number(maxAngularInput, 0.45),
-      max_detect_width: Math.max(0, Math.min(1080, number(detectWidthInput, 560))),
+      max_detect_width: Math.max(0, Math.min(1920, number(detectWidthInput, 720))),
       last_frame_id: lastBackendFrameId,
     };
   }
@@ -502,7 +511,10 @@
     const loopHz = pid.lastLoopMs ? `${(1000 / pid.lastLoopMs).toFixed(1)} Hz` : '-';
     setText(profilerLoopEl, loopHz);
     setText(profilerFetchEl, fetchMs ? `${fetchMs.toFixed(1)} ms` : '-');
-    setText(profilerDetectEl, perf.detect_ms !== undefined ? `${perf.detect_ms} ms` : '-');
+    const detectText = perf.total_ms !== undefined
+      ? `${perf.detect_ms ?? '-'} / ${perf.total_ms} ms`
+      : (perf.detect_ms !== undefined ? `${perf.detect_ms} ms` : '-');
+    setText(profilerDetectEl, detectText);
     setText(profilerFrameEl, perf.frame_age_ms !== undefined ? `${perf.frame_age_ms} ms` : '-');
     setText(profilerMissEl, `${pid.missedFrames}`);
     const roiSuffix = data?.fast_roi ? ' ROI' : '';
@@ -513,7 +525,7 @@
     if (busy) return null;
     busy = true;
     const now = performance.now();
-    const renderUi = acquireTarget || now - lastUiAt > 66;
+    const renderUi = acquireTarget || now - lastUiAt > 100;
     if (renderUi) lastUiAt = now;
     try {
       const fetchStarted = performance.now();
@@ -613,8 +625,8 @@
       publishVelocity(out.linear, out.angular, out.mode);
     }
     const elapsed = performance.now() - started;
-    const targetMs = 1000 / Math.max(1, Math.min(90, number(pidHzInput, 45)));
-    followTimer = window.setTimeout(followLoop, Math.max(2, targetMs - elapsed));
+    const targetMs = 1000 / Math.max(1, Math.min(144, number(pidHzInput, 90)));
+    followTimer = window.setTimeout(followLoop, Math.max(0, targetMs - elapsed));
   }
 
   function stopFollow() {

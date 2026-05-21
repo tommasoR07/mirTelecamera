@@ -32,7 +32,7 @@
     <dl class="tracking-profiler" aria-label="Profiler tracking">
       <div><dt>Loop</dt><dd id="profilerLoop">-</dd></div>
       <div><dt>Fetch</dt><dd id="profilerFetch">-</dd></div>
-      <div><dt>Detect</dt><dd id="profilerDetect">-</dd></div>
+      <div><dt>Detect / Total</dt><dd id="profilerDetect">-</dd></div>
       <div><dt>Frame age</dt><dd id="profilerFrame">-</dd></div>
       <div><dt>Miss</dt><dd id="profilerMiss">0</dd></div>
       <div><dt>Dict</dt><dd id="profilerDict">-</dd></div>
@@ -56,14 +56,14 @@
         </label>
       </div>
       <div class="row wrap">
-        <button class="btn tracking-preset active" data-hz="30" data-detect-width="480" data-linear="1.50" data-angular="1.50" type="button">30 Hz</button>
-        <button class="btn tracking-preset" data-hz="45" data-detect-width="560" data-linear="1.50" data-angular="1.50" type="button">45 Hz</button>
         <button class="btn tracking-preset" data-hz="60" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">60 Hz</button>
-        <button class="btn tracking-preset" data-hz="45" data-detect-width="0" data-linear="1.50" data-angular="1.50" type="button">Nativo</button>
+        <button class="btn tracking-preset active" data-hz="90" data-detect-width="720" data-linear="1.50" data-angular="1.50" type="button">90 Hz</button>
+        <button class="btn tracking-preset" data-hz="120" data-detect-width="900" data-linear="1.50" data-angular="1.50" type="button">120 Hz</button>
+        <button class="btn tracking-preset" data-hz="120" data-detect-width="0" data-linear="1.50" data-angular="1.50" type="button">Nativo MAX</button>
       </div>
       <button class="btn success" id="saveTrackingSettingsBtn" type="button">Salva valori tracking</button>
-      <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '45' }}">
-      <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '560' }}">
+      <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '90' }}">
+      <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '720' }}">
       <input id="trackingPidLinearKp" type="hidden" value="7.50">
       <input id="trackingPidLinearKi" type="hidden" value="0.00">
       <input id="trackingPidLinearKd" type="hidden" value="0.45">
@@ -92,5 +92,5 @@
   </aside>
 </div>
 
-<script src="/static/tracking.js?v=pid-rosbridge-17"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-19"></script>
 {% endblock %}
