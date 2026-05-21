@@ -2,93 +2,108 @@
 {% block title %}Tracking AprilTag{% endblock %}
 {% block content %}
 <div class="dashboard-heading">
-  <p class="eyebrow">Vision PID profiler</p>
-  <h1>AprilTag Control</h1>
-  <p>Stream diretto, PID ROSBridge e diagnostica prestazioni in tempo reale.</p>
+  <p class="eyebrow">COMPUTER VISION // RADAR PID</p>
+  <h1>AprilTag Tracking Control</h1>
+  <p>Live camera feedback, optical AprilTag detection parameters, and automated PID feedback logs.</p>
 </div>
 
 <div class="grid two tracking-shell">
   <section class="card tracking-panel">
-    <h2>Camera live</h2>
-    <div class="tracking-controls">
-      <label>Stream URL telefono
-        <input id="streamUrlInput" value="{{ camera_stream_url }}" placeholder="http://IP_TELEFONO:8080/video">
+    <h2>OPTICAL DETECTOR VIEWPORT</h2>
+    
+    <div class="tracking-controls" style="margin-bottom: 18px;">
+      <label>Mobile IP Stream Endpoint
+        <input id="streamUrlInput" value="{{ camera_stream_url }}" placeholder="http://IP_TELEFONO:8080/video" class="mono">
       </label>
       <input id="snapshotUrlInput" type="hidden" value="{{ camera_snapshot_url }}">
       <input id="mirHostInput" type="hidden" value="{{ settings.host }}">
-      <div class="row wrap">
-        <button class="btn" id="connectStreamBtn" type="button">Connetti stream</button>
-        <button class="btn" id="detectTagBtn" type="button">Riconosci AprilTag</button>
-        <button class="btn success" id="startTagFollowBtn" type="button">Segui con PID</button>
-        <button class="btn warn" id="stopFollowBtn" type="button">Stop follow</button>
-        <button class="btn ghost" id="clearTargetBtn" type="button">Rimuovi target</button>
-        <button class="btn danger" id="totalResetBtn" type="button">Total reset</button>
+      
+      <div class="row wrap" style="gap: 8px; margin-top: 8px;">
+        <button class="btn" id="connectStreamBtn" type="button">CONNECT STREAM</button>
+        <button class="btn" id="detectTagBtn" type="button">DETECT TAG</button>
+        <button class="btn success" id="startTagFollowBtn" type="button">START FOLLOW (PID)</button>
+        <button class="btn warn" id="stopFollowBtn" type="button">STOP FOLLOW</button>
+        <button class="btn ghost" id="clearTargetBtn" type="button">CLEAR TARGET</button>
+        <button class="btn danger" id="totalResetBtn" type="button">TOTAL RESET</button>
       </div>
     </div>
+    
     <div class="video-wrap">
-      <img id="trackingStream" alt="Stream telefono">
+      <img id="trackingStream" alt="Stream feed">
       <canvas id="trackingOverlay"></canvas>
+      <div class="hud-frame" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </div>
     </div>
+    
     <dl class="tracking-profiler" aria-label="Profiler tracking">
-      <div><dt>Loop</dt><dd id="profilerLoop">-</dd></div>
-      <div><dt>Fetch</dt><dd id="profilerFetch">-</dd></div>
-      <div><dt>Detect / Total</dt><dd id="profilerDetect">-</dd></div>
-      <div><dt>Frame age</dt><dd id="profilerFrame">-</dd></div>
-      <div><dt>Miss</dt><dd id="profilerMiss">0</dd></div>
-      <div><dt>Dict</dt><dd id="profilerDict">-</dd></div>
+      <div><dt>Loop Latency</dt><dd id="profilerLoop" class="mono">-</dd></div>
+      <div><dt>Frame Fetch</dt><dd id="profilerFetch" class="mono">-</dd></div>
+      <div><dt>Detect / Total</dt><dd id="profilerDetect" class="mono">-</dd></div>
+      <div><dt>Frame Age</dt><dd id="profilerFrame" class="mono">-</dd></div>
+      <div><dt>Frames Missed</dt><dd id="profilerMiss" class="mono">0</dd></div>
+      <div><dt>Aruco Dict</dt><dd id="profilerDict" class="mono">-</dd></div>
     </dl>
   </section>
-
+  
   <aside class="tracking-console">
-  <section class="card tracking-panel">
-    <h2>PID</h2>
-    <div class="stack">
-      <label>Distanza target desiderata, percentuale frame
-        <input id="trackingTargetSize" type="number" min="12" max="80" step="1" value="{{ tracking_settings.targetSize or '32' }}">
-      </label>
-      <div class="row small"><span>Dimensione tag desiderata</span><strong id="trackingTargetSizeValue">{{ tracking_settings.targetSize or '32' }}%</strong></div>
-      <div class="pid-input-grid">
-        <label>Lineare max
-          <input id="trackingLinearGain" type="number" min="0" max="5" step="0.01" value="{{ tracking_settings.maxLinear or '1.50' }}">
+    <section class="card tracking-panel">
+      <h2>PID CONTROL MODES</h2>
+      <div class="stack">
+        <label>Target Distance Area (%)
+          <input id="trackingTargetSize" type="range" min="12" max="80" step="1" value="{{ tracking_settings.targetSize or '32' }}">
         </label>
-        <label>Angolare max
-          <input id="trackingAngularGain" type="number" min="0" max="5" step="0.01" value="{{ tracking_settings.maxAngular or '1.50' }}">
-        </label>
+        <div class="row small">
+          <span>Target Optical Dimension</span>
+          <strong id="trackingTargetSizeValue" class="mono" style="color: var(--neon-cyan);">{{ tracking_settings.targetSize or '32' }}%</strong>
+        </div>
+        
+        <div class="pid-input-grid">
+          <label>Max Linear Gain
+            <input id="trackingLinearGain" type="number" min="0" max="5" step="0.01" value="{{ tracking_settings.maxLinear or '1.50' }}" class="mono">
+          </label>
+          <label>Max Angular Gain
+            <input id="trackingAngularGain" type="number" min="0" max="5" step="0.01" value="{{ tracking_settings.maxAngular or '1.50' }}" class="mono">
+          </label>
+        </div>
+        
+        <label>FREQUENCY PRESETS</label>
+        <div class="row wrap" style="gap: 6px;">
+          <button class="btn tracking-preset small" data-hz="60" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">60 Hz</button>
+          <button class="btn tracking-preset active small" data-hz="90" data-detect-width="720" data-linear="1.50" data-angular="1.50" type="button">90 Hz</button>
+          <button class="btn tracking-preset small" data-hz="120" data-detect-width="900" data-linear="1.50" data-angular="1.50" type="button">120 Hz</button>
+          <button class="btn tracking-preset small" data-hz="120" data-detect-width="0" data-linear="1.50" data-angular="1.50" type="button">NATIVE MAX</button>
+        </div>
+        
+        <button class="btn success" id="saveTrackingSettingsBtn" type="button" style="margin-top: 6px;">SAVE CONFIGURATION</button>
+        
+        <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '90' }}">
+        <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '720' }}">
+        <input id="trackingPidLinearKp" type="hidden" value="4.20">
+        <input id="trackingPidLinearKi" type="hidden" value="0.08">
+        <input id="trackingPidLinearKd" type="hidden" value="0.55">
+        <input id="trackingPidAngularKp" type="hidden" value="5.60">
+        <input id="trackingPidAngularKi" type="hidden" value="0.10">
+        <input id="trackingPidAngularKd" type="hidden" value="0.18">
       </div>
-      <div class="row wrap">
-        <button class="btn tracking-preset" data-hz="60" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">60 Hz</button>
-        <button class="btn tracking-preset active" data-hz="90" data-detect-width="720" data-linear="1.50" data-angular="1.50" type="button">90 Hz</button>
-        <button class="btn tracking-preset" data-hz="120" data-detect-width="900" data-linear="1.50" data-angular="1.50" type="button">120 Hz</button>
-        <button class="btn tracking-preset" data-hz="120" data-detect-width="0" data-linear="1.50" data-angular="1.50" type="button">Nativo MAX</button>
-      </div>
-      <button class="btn success" id="saveTrackingSettingsBtn" type="button">Salva valori tracking</button>
-      <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '90' }}">
-      <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '720' }}">
-      <input id="trackingPidLinearKp" type="hidden" value="4.20">
-      <input id="trackingPidLinearKi" type="hidden" value="0.08">
-      <input id="trackingPidLinearKd" type="hidden" value="0.55">
-      <input id="trackingPidAngularKp" type="hidden" value="5.60">
-      <input id="trackingPidAngularKi" type="hidden" value="0.10">
-      <input id="trackingPidAngularKd" type="hidden" value="0.18">
-    </div>
-  </section>
-
-  <section class="card tracking-panel">
-    <h2>Stato</h2>
-    <dl class="tracking-status-grid" id="trackingStats">
-      <div><dt>Stream</dt><dd id="trackingStreamState">non connesso</dd></div>
-      <div><dt>ROSBridge</dt><dd id="trackingRosState">non connesso</dd></div>
-      <div><dt>Target</dt><dd id="trackingTargetState">non acquisito</dd></div>
-      <div><dt>AprilTag ID</dt><dd id="trackingTagId">-</dd></div>
-      <div><dt>Offset X</dt><dd id="trackingOffset">-</dd></div>
-      <div><dt>Dimensione frame</dt><dd id="trackingRatio">-</dd></div>
-      <div><dt>Precisione</dt><dd id="trackingPrecision">-</dd></div>
-      <div><dt>Curva</dt><dd id="trackingCurveMode">spenta</dd></div>
-      <div><dt>Performance</dt><dd id="trackingPerf">-</dd></div>
-      <div><dt>PID</dt><dd id="trackingCommand">linear=0 angular=0</dd></div>
-      <div><dt>Follow</dt><dd id="trackingFollowState">spento</dd></div>
-    </dl>
-  </section>
+    </section>
+    
+    <section class="card tracking-panel">
+      <h2>TELEMETRY TELEMETRICS</h2>
+      <dl class="tracking-status-grid" id="trackingStats">
+        <div><dt>Camera Feed</dt><dd id="trackingStreamState" class="mono">DISCONNECTED</dd></div>
+        <div><dt>ROSBridge</dt><dd id="trackingRosState" class="mono">DISCONNECTED</dd></div>
+        <div><dt>Target Lock</dt><dd id="trackingTargetState" class="mono">NO LOCK</dd></div>
+        <div><dt>AprilTag ID</dt><dd id="trackingTagId" class="mono">N/A</dd></div>
+        <div><dt>X-Axis Offset</dt><dd id="trackingOffset" class="mono">-</dd></div>
+        <div><dt>Frame Resolution</dt><dd id="trackingRatio" class="mono">-</dd></div>
+        <div><dt>Precision Level</dt><dd id="trackingPrecision" class="mono">-</dd></div>
+        <div><dt>Adaptive Curve</dt><dd id="trackingCurveMode" class="mono">INACTIVE</dd></div>
+        <div><dt>Perf Metric</dt><dd id="trackingPerf" class="mono">-</dd></div>
+        <div><dt>PID Output</dt><dd id="trackingCommand" class="mono" style="font-size: 0.72rem;">linear=0 angular=0</dd></div>
+        <div><dt>Automation Loop</dt><dd id="trackingFollowState" class="mono">INACTIVE</dd></div>
+      </dl>
+    </section>
   </aside>
 </div>
 

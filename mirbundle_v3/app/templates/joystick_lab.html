@@ -1,73 +1,98 @@
 {% extends 'base.html' %}
 {% block title %}Joystick Lab{% endblock %}
 {% block content %}
-<h1>Joystick manuale</h1>
+<div class="dashboard-heading">
+  <p class="eyebrow">COMMAND CONSOLE // ACTUATORS</p>
+  <h1>Joystick Control Lab</h1>
+  <p>Direct manual vector steering over ROSBridge web sockets, raw speed profiling, and hardware feedback logs.</p>
+</div>
 
 <section class="card">
-  <h2>ROSBridge</h2>
-  <div class="grid two">
-    <label>Robot host
-      <input id="mirHostInput" value="{{ settings.host }}" placeholder="http://192.168.1.50">
+  <h2>ROSBRIDGE WEB SOCKET INTERFACE</h2>
+  <div class="grid two" style="margin-bottom: 18px;">
+    <label>Robot Network IP
+      <input id="mirHostInput" value="{{ settings.host }}" placeholder="http://192.168.1.50" class="mono">
     </label>
-    <label>Socket URL
-      <input id="rosSocketUrlInput" placeholder="ws://192.168.1.50:9090">
+    <label>Websocket Socket URL
+      <input id="rosSocketUrlInput" placeholder="ws://192.168.1.50:9090" class="mono">
     </label>
-    <label>web_session_id
-      <input id="rosSessionInput" value="MIRITISCUNEO" placeholder="MIRITISCUNEO">
+    <label>Web Session GUID
+      <input id="rosSessionInput" value="MIRITISCUNEO" placeholder="MIRITISCUNEO" class="mono">
     </label>
-    <label>joystick_token
-      <input id="joystickTokenInput" placeholder="automatico dopo Manual control">
+    <label>Active Joystick Authorization Token
+      <input id="joystickTokenInput" placeholder="AUTOMATICALLY ASSIGNED UPON PAIRING" readonly class="mono">
     </label>
   </div>
-  <div class="row wrap">
-    <button class="btn success" id="connectRosBtn" type="button">Connetti e prendi controllo</button>
-    <button class="btn danger" id="disconnectRosBtn" type="button">Disconnetti</button>
+  <div class="row wrap" style="gap: 8px;">
+    <button class="btn success" id="connectRosBtn" type="button">PAIR & ACQUIRE MANUAL CONTROL</button>
+    <button class="btn danger" id="disconnectRosBtn" type="button">TERMINATE PAIRING</button>
   </div>
 </section>
 
-<section class="card">
-  <h2>Velocita</h2>
-  <div class="row wrap">
-    <button class="btn ros-speed-profile active" data-linear="0.10" data-angular="0.28" type="button">Normale</button>
-    <button class="btn ros-speed-profile" data-linear="1.00" data-angular="1.00" type="button">Veloce</button>
-    <button class="btn danger ros-speed-profile" data-linear="10.00" data-angular="10.00" type="button">F1</button>
-    <label class="inline-check"><input id="rosTurboOverride" type="checkbox"> Override oltre max</label>
-  </div>
-  <div class="grid two">
-    <div class="stack">
-      <label>Lineare max
-        <input id="rosLinearSpeed" type="range" min="0.02" max="10.00" step="0.01" value="0.10">
-      </label>
-      <div class="row small"><span>linear.x</span><strong id="rosLinearValue">0.10</strong></div>
+<div class="grid two">
+  <section class="card">
+    <h2>VECTOR SPEED PARAMETERS</h2>
+    <div class="row wrap" style="gap: 6px; margin-bottom: 18px;">
+      <button class="btn ros-speed-profile active" data-linear="0.10" data-angular="0.28" type="button">NORM PROFILE</button>
+      <button class="btn ros-speed-profile" data-linear="1.00" data-angular="1.00" type="button">MAX DRIVE</button>
+      <button class="btn danger ros-speed-profile" data-linear="10.00" data-angular="10.00" type="button">ALARM SPEED (F1)</button>
     </div>
-    <div class="stack">
-      <label>Angolare max
-        <input id="rosAngularSpeed" type="range" min="0.08" max="10.00" step="0.01" value="0.28">
-      </label>
-      <div class="row small"><span>angular.z</span><strong id="rosAngularValue">0.28</strong></div>
+    
+    <div class="inline-check" style="margin-bottom: 18px;">
+      <input id="rosTurboOverride" type="checkbox">
+      <label for="rosTurboOverride" style="cursor: pointer;">OVERRIDE SAFE SPEED CEILING</label>
     </div>
-  </div>
-</section>
+    
+    <div class="stack">
+      <div class="stack">
+        <label>Linear Drive Limit
+          <input id="rosLinearSpeed" type="range" min="0.02" max="10.00" step="0.01" value="0.10">
+        </label>
+        <div class="row small">
+          <span>linear.x (m/s)</span>
+          <strong id="rosLinearValue" class="mono" style="color: var(--neon-cyan);">0.10</strong>
+        </div>
+      </div>
+      
+      <div class="stack" style="margin-top: 10px;">
+        <label>Angular Yaw Limit
+          <input id="rosAngularSpeed" type="range" min="0.08" max="10.00" step="0.01" value="0.28">
+        </label>
+        <div class="row small">
+          <span>angular.z (rad/s)</span>
+          <strong id="rosAngularValue" class="mono" style="color: var(--neon-cyan);">0.28</strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" style="text-align: center;">
+    <h2>VECTOR STEERING STAGE</h2>
+    
+    <div class="joystick-stage" id="rosJoystick" role="application" aria-label="Joystick manuale">
+      <div class="joystick-cross horizontal"></div>
+      <div class="joystick-cross vertical"></div>
+      <div class="joystick-knob" id="rosJoystickKnob"></div>
+    </div>
+    
+    <button class="btn danger" id="rosStopBtn" type="button" style="margin-top: 8px; width: 100%;">FORCE PAUSE PUBLISHING</button>
+  </section>
+</div>
 
 <section class="card">
-  <h2>Joystick</h2>
-  <div class="joystick-stage" id="rosJoystick" role="application" aria-label="Joystick manuale">
-    <div class="joystick-cross horizontal"></div>
-    <div class="joystick-cross vertical"></div>
-    <div class="joystick-knob" id="rosJoystickKnob"></div>
-  </div>
-  <div class="row wrap">
-    <button class="btn danger" id="rosStopBtn" type="button">Stop publish</button>
-  </div>
-</section>
-
-<section class="card">
-  <h2>Stato</h2>
-  <dl class="kv compact">
-    <div><dt>Connessione</dt><dd id="rosState">non connesso</dd></div>
-    <div><dt>Ultimo comando</dt><dd id="rosLastCommand">-</dd></div>
+  <h2>COCKPIT TELEMETRY OUT</h2>
+  <dl class="kv compact" style="margin-bottom: 14px;">
+    <div>
+      <dt>Pairing Status</dt>
+      <dd id="rosState" class="mono" style="color: var(--neon-cyan); font-weight: 700;">DISCONNECTED</dd>
+    </div>
+    <div>
+      <dt>Last Vector Command Payload</dt>
+      <dd id="rosLastCommand" class="mono" style="color: var(--neon-gold);">N/A</dd>
+    </div>
   </dl>
-  <pre id="rosLog" class="hidden">Pronto.</pre>
+  
+  <pre id="rosLog" class="hidden">Holo-Deck logs initialized.</pre>
 </section>
 
 <script src="/static/joystick_lab.js?v=rosbridge-lab-9"></script>

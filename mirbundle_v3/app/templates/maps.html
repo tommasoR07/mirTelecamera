@@ -1,63 +1,98 @@
 {% extends 'base.html' %}
 {% block title %}Mappe / Localizzazione{% endblock %}
 {% block content %}
-<h1>Mappe e localizzazione</h1>
-<section class="card narrow">
-  <h2>1. Seleziona mappa</h2>
-  <form method="get" action="/maps" class="stack">
-    <label>Mappa
-      <select name="map_id">
-        {% for item in maps %}
-        <option value="{{ item.guid }}" {% if selected_map == item.guid %}selected{% endif %}>{{ item.name or item.guid }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <button class="btn" type="submit">Carica posizioni</button>
-  </form>
-</section>
-
-<section class="card">
-  <h2>2. Ripristino quando il MiR perde la posizione</h2>
-  <p class="note">Se il robot non sa più dov'è, mettilo fisicamente vicino a una posizione salvata della mappa, seleziona quella posizione e premi <strong>Localizza qui</strong>. Se il firmware non accetta la localizzazione via API, l'app mostra l'errore reale del MiR.</p>
-  <form method="post" action="/maps/localize" class="stack">
-    <input type="hidden" name="map_id" value="{{ selected_map }}">
-    <label>Posizione di riferimento
-      <select name="position_id" required>
-        {% for item in positions %}
-        <option value="{{ item.guid }}">{{ item.name or item.guid }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <div class="row wrap">
-      <button class="btn success" type="submit">Localizza qui</button>
-      <button class="btn" type="submit" formaction="/maps/set-active">Imposta mappa attiva</button>
-    </div>
-  </form>
-</section>
+<div class="dashboard-heading">
+  <p class="eyebrow">NAVIGATION MODULE // SPATIAL INDEX</p>
+  <h1>Mappe e localizzazione</h1>
+  <p>Load available maps, assign localization anchors, and coordinate absolute coordinates when tracking alignment is lost.</p>
+</div>
 
 <div class="grid two">
   <section class="card">
-    <h2>Posizioni disponibili</h2>
+    <h2>1. SPATIAL MAP SELECTOR</h2>
+    <form method="get" action="/maps" class="stack">
+      <label>Active Spatial Database
+        <select name="map_id" class="mono">
+          {% for item in maps %}
+          <option value="{{ item.guid }}" {% if selected_map == item.guid %}selected{% endif %}>{{ item.name or item.guid }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button class="btn" type="submit" style="width: 100%;">LOAD NAV ANCHORS</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>2. RE-LOCALIZATION ANCHORS</h2>
+    <p class="note">If the robot loses its global coordinates, place it physically close to a known anchor point, select it, and trigger <strong>LOCALIZE HERE</strong>.</p>
+    
+    <form method="post" action="/maps/localize" class="stack" style="margin-top: 14px;">
+      <input type="hidden" name="map_id" value="{{ selected_map }}">
+      
+      <label>Reference Anchor Point
+        <select name="position_id" required class="mono">
+          {% for item in positions %}
+          <option value="{{ item.guid }}">{{ item.name or item.guid }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      
+      <div class="row wrap" style="gap: 8px;">
+        <button class="btn success" type="submit">LOCALIZE HERE</button>
+        <button class="btn" type="submit" formaction="/maps/set-active">ACTIVATE SPATIAL MAP</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<div class="grid two" style="margin-top: 20px;">
+  <section class="card">
+    <h2>SPATIAL ANCHORS</h2>
     <table>
-      <thead><tr><th>Nome</th><th>Tipo</th><th>GUID</th></tr></thead>
+      <thead>
+        <tr>
+          <th>ANCHOR NAME</th>
+          <th>TYPE</th>
+          <th>GUID HASH</th>
+        </tr>
+      </thead>
       <tbody>
       {% for item in positions %}
-        <tr><td>{{ item.name or '-' }}</td><td>{{ item.type_id or item.type_name or '-' }}</td><td class="mono">{{ item.guid }}</td></tr>
+        <tr>
+          <td>{{ item.name or '-' }}</td>
+          <td class="mono" style="color: var(--neon-cyan);">{{ item.type_id or item.type_name or '-' }}</td>
+          <td class="mono" style="font-size: 0.8rem; color: var(--text-muted);">{{ item.guid }}</td>
+        </tr>
       {% else %}
-        <tr><td colspan="3">Nessuna posizione.</td></tr>
+        <tr>
+          <td colspan="3" style="font-family: var(--font-mono); color: var(--text-dim); text-align: center;">// NO POSITION ANCHORS DETECTED</td>
+        </tr>
       {% endfor %}
       </tbody>
     </table>
   </section>
+
   <section class="card">
-    <h2>Zone</h2>
+    <h2>RESTRICTED MAP ZONES</h2>
     <table>
-      <thead><tr><th>Nome</th><th>Tipo</th><th>GUID</th></tr></thead>
+      <thead>
+        <tr>
+          <th>ZONE NAME</th>
+          <th>TYPE</th>
+          <th>GUID HASH</th>
+        </tr>
+      </thead>
       <tbody>
       {% for item in zones %}
-        <tr><td>{{ item.name or '-' }}</td><td>{{ item.type_id or item.type_name or '-' }}</td><td class="mono">{{ item.guid }}</td></tr>
+        <tr>
+          <td>{{ item.name or '-' }}</td>
+          <td class="mono" style="color: var(--neon-magenta);">{{ item.type_id or item.type_name or '-' }}</td>
+          <td class="mono" style="font-size: 0.8rem; color: var(--text-muted);">{{ item.guid }}</td>
+        </tr>
       {% else %}
-        <tr><td colspan="3">Nessuna zona o endpoint zone non supportato.</td></tr>
+        <tr>
+          <td colspan="3" style="font-family: var(--font-mono); color: var(--text-dim); text-align: center;">// NO RESTRICTED ZONES CONFIGURED</td>
+        </tr>
       {% endfor %}
       </tbody>
     </table>

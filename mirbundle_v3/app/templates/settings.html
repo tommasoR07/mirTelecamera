@@ -1,43 +1,62 @@
 {% extends 'base.html' %}
 {% block title %}Settings{% endblock %}
 {% block content %}
-<h1>Configurazione</h1>
+<div class="dashboard-heading">
+  <p class="eyebrow">HARDWARE PARAMETERS // SETUP</p>
+  <h1>System Configuration</h1>
+  <p>Update network credentials, camera media streams, and local REST api parameters for the MiR-100 system.</p>
+</div>
+
 <section class="card narrow">
-  <form method="post" action="/settings" class="stack">
-    <h2>Connessione MiR</h2>
-    <label>Robot host
-      <input name="host" value="{{ settings.host }}" placeholder="http://192.168.12.20" required>
+  <h2>COCKPIT PARAMETERS</h2>
+  
+  <form method="post" action="/settings" class="stack" style="margin-top: 18px;">
+    
+    <h3 style="color: var(--neon-cyan); border-bottom: 1px solid rgba(0, 240, 255, 0.1); padding-bottom: 6px;">1. MiR SYSTEM GATEWAY</h3>
+    
+    <label>Robot Network IP (Host)
+      <input name="host" value="{{ settings.host }}" placeholder="http://192.168.12.20" required class="mono">
     </label>
-    <label>Username
-      <input name="username" value="{{ settings.username }}" required>
+    
+    <div class="grid two" style="gap: 12px;">
+      <label>Username
+        <input name="username" value="{{ settings.username }}" required class="mono">
+      </label>
+      <label>Password
+        <input type="password" name="password" value="{{ settings.password }}" required class="mono">
+      </label>
+    </div>
+    
+    <label>Default Mission Group GUID
+      <input name="mission_group_id" value="{{ settings.mission_group_id }}" placeholder="Leave blank if auto-configured" class="mono">
     </label>
-    <label>Password
-      <input type="password" name="password" value="{{ settings.password }}" required>
+    
+    <div class="sep" style="margin: 20px 0;"></div>
+    
+    <h3 style="color: var(--neon-magenta); border-bottom: 1px solid rgba(214, 0, 255, 0.1); padding-bottom: 6px;">2. MOBILE CAMERA FEEDS</h3>
+    <p class="note">Prefer Direct HTTP/MJPEG streams (e.g. <code>http://IP_TELEFONO:8080/video</code>). If MJPEG stream is loaded, snapshot query overrides are bypassed.</p>
+    
+    <label>Video Stream Endpoint URL
+      <input name="camera_stream_url" value="{{ settings.camera_stream_url }}" placeholder="http://IP_TELEFONO:8080/video" class="mono">
     </label>
-    <label>Mission group id predefinito
-      <input name="mission_group_id" value="{{ settings.mission_group_id }}" placeholder="opzionale">
+    
+    <label>Optional Snapshot Query URL
+      <input name="camera_snapshot_url" value="{{ settings.camera_snapshot_url }}" placeholder="http://IP_TELEFONO:8080/shot.jpg" class="mono">
     </label>
-
-    <hr class="sep">
-    <h2>Telefono come camera IP</h2>
-    <p class="note">Usa preferibilmente HTTP/MJPEG diretto, ad esempio http://IP_TELEFONO:8080/video. Se usi MJPEG puoi lasciare vuoto lo snapshot.</p>
-    <label>Stream URL telefono
-      <input name="camera_stream_url" value="{{ settings.camera_stream_url }}" placeholder="http://IP_TELEFONO:8080/video">
-    </label>
-    <label>Snapshot URL opzionale
-      <input name="camera_snapshot_url" value="{{ settings.camera_snapshot_url }}" placeholder="http://IP_TELEFONO:8080/shot.jpg">
-    </label>
-
+    
     <input type="hidden" name="drive_endpoint_path" value="">
     <input type="hidden" name="drive_http_method" value="POST">
     <input type="hidden" name="drive_body_template" value='{"linear": {{linear}}, "angular": {{angular}}}'>
+    
     <input type="hidden" name="manual_take_endpoint_path" value="{{ settings.manual_take_endpoint_path }}">
     <input type="hidden" name="manual_take_http_method" value="{{ settings.manual_take_http_method }}">
     <input type="hidden" name="manual_take_body_template" value='{{ settings.manual_take_body_template }}'>
+    
     <input type="hidden" name="manual_release_endpoint_path" value="{{ settings.manual_release_endpoint_path }}">
     <input type="hidden" name="manual_release_http_method" value="{{ settings.manual_release_http_method }}">
     <input type="hidden" name="manual_release_body_template" value='{{ settings.manual_release_body_template }}'>
-    <button class="btn" type="submit">Salva configurazione</button>
+    
+    <button class="btn success" type="submit" style="width: 100%; margin-top: 10px; min-height: 48px;">COMMIT AND UPDATE HARDWARE GATEWAY</button>
   </form>
 </section>
 {% endblock %}

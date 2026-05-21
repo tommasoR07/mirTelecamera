@@ -11,17 +11,17 @@
 {% set is_warning_state = 'error' in state_l or 'emergency' in state_l or 'protective' in state_l or 'abort' in state_l or 'paused' in state_l or 'pause' in state_l %}
 
 <div class="dashboard-heading">
-  <p class="eyebrow">MIR100 command deck</p>
+  <p class="eyebrow">COMMAND DECK // TELEMETRY</p>
   <h1>Control Deck</h1>
-  <p>Stato live, recovery rapido e visione robot in una console unica.</p>
+  <p>Live diagnostics, system status alerts, and hardware command interface.</p>
 </div>
 
 {% if is_low_battery or is_warning_state %}
 <section class="system-warning" role="status" aria-live="polite">
-  <strong>Warning operativo</strong>
+  <strong>[!] ALARM SIGNAL DETECTED</strong>
   <span>
-    {% if is_warning_state %}Stato robot: {{ state_text }}.{% endif %}
-    {% if is_low_battery %} Batteria bassa: {{ battery_display }}%.{% endif %}
+    {% if is_warning_state %}Robot State: {{ state_text }}.{% endif %}
+    {% if is_low_battery %} Critical Battery Level: {{ battery_display }}%.{% endif %}
   </span>
 </section>
 {% endif %}
@@ -39,78 +39,98 @@
       interaction-prompt="none"
       aria-label="Modello 3D MiR 100"
     >
-      <div class="robot-fallback" slot="poster">Caricamento modello MiR 100</div>
+      <div class="robot-fallback" slot="poster">// LOADING HOLOGRAPHIC GEOMETRY...</div>
     </model-viewer>
     <div class="hud-frame" aria-hidden="true">
       <span></span><span></span><span></span><span></span>
     </div>
   </div>
   <div class="robot-hud">
-    <p class="eyebrow">Stato robot live</p>
-    <h2>{{ status.robot_name or 'MiR 100' }}</h2>
+    <p class="eyebrow">TELEMETRY LINK</p>
+    <h2>{{ status.robot_name or 'MiR 100 System' }}</h2>
+    
     <div class="status-stack">
       <span class="status-pill {{ 'danger' if is_warning_state else 'success' }}">{{ state_text }}</span>
-      <span class="status-pill {{ 'danger' if is_low_battery else '' }}">Batteria {{ battery_display }}%</span>
+      <span class="status-pill {{ 'danger' if is_low_battery else '' }}">BATT // {{ battery_display }}%</span>
     </div>
+    
     <div class="battery-bar {{ 'danger' if is_low_battery else '' }}" style="--battery: {{ battery_display if battery_display != '-' else 0 }}%">
       <div class="battery-bar-head">
-        <span>Batteria</span>
+        <span>POWER DECK</span>
         <strong>{{ battery_display }}%</strong>
       </div>
       <div class="battery-track" aria-hidden="true">
         <span></span>
       </div>
     </div>
+    
     <dl class="hud-metrics">
-      <div><dt>State</dt><dd class="{{ 'text-danger' if is_warning_state else '' }}">{{ state_text }}</dd></div>
-      <div><dt>Batteria</dt><dd class="{{ 'text-danger' if is_low_battery else '' }}">{{ battery_display }}%</dd></div>
-      <div><dt>Mode</dt><dd>{{ mode_text or '-' }}</dd></div>
+      <div>
+        <dt>State Code</dt>
+        <dd class="{{ 'text-danger' if is_warning_state else '' }}" style="font-family: var(--font-mono);">{{ state_text }}</dd>
+      </div>
+      <div>
+        <dt>Charge</dt>
+        <dd class="{{ 'text-danger' if is_low_battery else '' }}" style="font-family: var(--font-mono);">{{ battery_display }}%</dd>
+      </div>
+      <div>
+        <dt>Sys Mode</dt>
+        <dd style="font-family: var(--font-mono);">{{ mode_text or '-' }}</dd>
+      </div>
     </dl>
   </div>
 </section>
 
 <div class="dashboard-actions">
-  <a class="btn" href="/">Aggiorna</a>
+  <a class="btn" href="/">AGGIO // REFRESH</a>
   <form method="post" action="/robot/ready">
     <button class="btn success ready" type="submit">READY / RESUME</button>
   </form>
   <form method="post" action="/robot/clear-errors">
-    <button class="btn danger" type="submit">Reset errori</button>
+    <button class="btn danger" type="submit">RESET ERRORS</button>
   </form>
-  <a class="btn ghost" href="/tracking">Tracking</a>
+  <a class="btn ghost" href="/tracking">// TARGET TRACKING</a>
 </div>
 
 <div class="grid two dashboard-grid">
   <section class="card">
-    <h2>Stato</h2>
+    <h2>SYSTEM STATUS LOGS</h2>
     {% if status %}
     <dl class="kv">
-      <div><dt>Robot</dt><dd>{{ status.robot_name or '-' }}</dd></div>
-      <div><dt>State</dt><dd><strong class="{{ 'text-danger' if is_warning_state else '' }}">{{ state_text }}</strong></dd></div>
-      <div><dt>Battery</dt><dd class="{{ 'text-danger' if is_low_battery else '' }}">{{ battery_display }}%</dd></div>
-      <div><dt>Velocity</dt><dd>{{ status.velocity or '-' }}</dd></div>
-      <div><dt>Mode</dt><dd>{{ mode_text or '-' }}</dd></div>
-      <div><dt>Mappa</dt><dd>{{ status.map_text or status.map_id or '-' }}</dd></div>
+      <div><dt>Hardware Node</dt><dd class="mono">{{ status.robot_name or '-' }}</dd></div>
+      <div><dt>Operation State</dt><dd class="mono"><strong class="{{ 'text-danger' if is_warning_state else '' }}">{{ state_text }}</strong></dd></div>
+      <div><dt>Battery Reserve</dt><dd class="mono {{ 'text-danger' if is_low_battery else '' }}">{{ battery_display }}%</dd></div>
+      <div><dt>Linear Velocity</dt><dd class="mono">{{ status.velocity or '-' }}</dd></div>
+      <div><dt>Active Mode</dt><dd class="mono">{{ mode_text or '-' }}</dd></div>
+      <div><dt>Nav Map</dt><dd class="mono">{{ status.map_text or status.map_id or '-' }}</dd></div>
     </dl>
     {% else %}
-      <p>Nessun dato disponibile.</p>
+      <p style="font-family: var(--font-mono); color: var(--text-dim);">// NO DATA STREAMING</p>
     {% endif %}
-    <p class="note">Usa <strong>Metti Ready / Resume</strong> quando il MiR resta in Pause e non parte con le missioni.</p>
+    <p class="note">Run <strong>READY / RESUME</strong> when the MiR hardware pauses or stops mission loops.</p>
   </section>
 
   <section class="card">
-    <h2>Ultima queue</h2>
+    <h2>MISSION TIMELINE QUEUE</h2>
     <table>
-      <thead><tr><th>ID</th><th>Missione</th><th>Stato</th></tr></thead>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>MISSION</th>
+          <th>STATUS</th>
+        </tr>
+      </thead>
       <tbody>
       {% for item in queue %}
         <tr>
-          <td>{{ item.id or '-' }}</td>
-          <td>{{ item.mission_text or item.mission_id or '-' }}</td>
-          <td>{{ item.state or item.state_text or item.state_id or '-' }}</td>
+          <td class="mono">{{ item.id or '-' }}</td>
+          <td class="mono">{{ item.mission_text or item.mission_id or '-' }}</td>
+          <td class="mono" style="color: {% if item.state == 'Done' or item.state_text == 'Done' %}var(--neon-green){% else %}var(--neon-cyan){% endif %};">{{ item.state or item.state_text or item.state_id or '-' }}</td>
         </tr>
       {% else %}
-        <tr><td colspan="3">Nessuna missione in queue.</td></tr>
+        <tr>
+          <td colspan="3" style="font-family: var(--font-mono); color: var(--text-dim); text-align: center;">// NO MISSIONS ENQUEUED</td>
+        </tr>
       {% endfor %}
       </tbody>
     </table>
@@ -119,15 +139,16 @@
 
 <section class="project-strip">
   <article>
-    <span>01</span>
-      <h3>1. Controllo MiR</h3>
-      <p>Dashboard, stato robot, Ready/Resume, reset errori, missioni e coda.</p>
+    <span>MODULE // 01</span>
+    <h3>MiR Controller Deck</h3>
+    <p>Provides live diagnostics, power monitoring, error overrides, and system reset hooks.</p>
   </article>
   <article>
-    <span>02</span>
-      <h3>2. Tracking telefono</h3>
-      <p>Video da telefono usato come camera IP e selezione AprilTag dalla pagina Tracking.</p>
+    <span>MODULE // 02</span>
+    <h3>AprilTag Target Tracker</h3>
+    <p>Hooks the mobile IP camera streams and executes PID-based line tracking relative to optical targets.</p>
   </article>
 </section>
+
 <script type="module" src="/static/vendor/model-viewer.min.js?v=4.1.0"></script>
 {% endblock %}

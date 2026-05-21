@@ -1,111 +1,136 @@
 {% extends 'base.html' %}
 {% block title %}Missioni{% endblock %}
 {% block content %}
-<h1>Missioni e coda</h1>
-<p class="muted">Usa <b>Avvia ora</b> per pulire la coda, sbloccare eventuale pausa e accodare subito una missione. Se non parte, il messaggio rosso mostrerà la risposta reale del MiR.</p>
+<div class="dashboard-heading">
+  <p class="eyebrow">MISSION ARCHITECTURE // QUEUE CONTROL</p>
+  <h1>Missioni e coda</h1>
+  <p>Select target payload mission loops, configure execution parameters, and monitor chronological job stack.</p>
+</div>
 
 <div class="grid two">
   <section class="card">
-    <div class="row space">
-      <h2>1. Scegli / aggiorna gruppo missioni</h2>
-      <a class="btn secondary" href="/missions{% if selected_group %}?group_id={{ selected_group }}{% endif %}">Aggiorna</a>
-    </div>
+    <h2>1. PAYLOAD MISSION GROUP</h2>
     <form method="get" action="/missions" class="stack">
-      <label>Gruppo missioni
-        <select name="group_id">
+      <label>Active Mission Group
+        <select name="group_id" class="mono">
           {% for group in groups %}
           <option value="{{ group.guid }}" {% if selected_group == group.guid %}selected{% endif %}>{{ group.name or group.guid }}</option>
           {% endfor %}
         </select>
       </label>
-      <button class="btn" type="submit">Carica / aggiorna missioni</button>
+      <div class="row wrap" style="gap: 8px;">
+        <button class="btn" type="submit">LOAD PAYLOAD TASKS</button>
+        <a class="btn ghost" href="/missions{% if selected_group %}?group_id={{ selected_group }}{% endif %}">// REFRESH LIST</a>
+      </div>
     </form>
-    <p class="muted">Se non vedi missioni, apri prima un gruppo missioni e premi “Carica / aggiorna missioni”.</p>
   </section>
 
   <section class="card">
-    <h2>2. Avvia una missione</h2>
+    <h2>2. CUSTOM PARAMETER LAUNCHER</h2>
     <form method="post" action="/missions/enqueue" class="stack">
       <input type="hidden" name="group_id" value="{{ selected_group }}">
-      <label>Missione
-        <select name="mission_id" required>
+      
+      <label>Active Mission ID
+        <select name="mission_id" required class="mono">
           {% for mission in missions %}
           <option value="{{ mission.guid }}">{{ mission.name or mission.guid }}</option>
           {% endfor %}
         </select>
       </label>
-      <label>Parametro input name (opzionale)
-        <input name="parameter_input_name" placeholder="askVar">
-      </label>
-      <label>Parametro value (opzionale)
-        <input name="parameter_value" placeholder="position-guid o altro valore">
-      </label>
-      <button class="btn" type="submit">Aggiungi alla coda</button>
-      <button class="btn success" type="submit" formaction="/missions/start-now">Avvia ora</button>
+      
+      <div class="grid two" style="gap: 12px;">
+        <label>Input Parameter Variable
+          <input name="parameter_input_name" placeholder="e.g. askVar" class="mono">
+        </label>
+        <label>Input Parameter Value
+          <input name="parameter_value" placeholder="e.g. position-guid" class="mono">
+        </label>
+      </div>
+      
+      <div class="row wrap" style="gap: 8px; margin-top: 8px;">
+        <button class="btn" type="submit">ADD TO TASK QUEUE</button>
+        <button class="btn success" type="submit" formaction="/missions/start-now">OVERRIDE & START NOW</button>
+      </div>
     </form>
-    <p class="muted">Nel MiR, aggiungere una missione alla coda equivale ad avviarla se il robot è Ready/Idle e non è in Manual mode.</p>
   </section>
 </div>
 
-<section class="card">
-  <div class="row space">
-    <h2>Missioni disponibili</h2>
-    <a class="btn secondary" href="/missions{% if selected_group %}?group_id={{ selected_group }}{% endif %}">Aggiorna lista</a>
+<section class="card" style="margin-top: 20px;">
+  <div class="row space" style="margin-bottom: 12px;">
+    <h2>AVAILABLE TARGET MISSIONS</h2>
+    <a class="btn ghost small" href="/missions{% if selected_group %}?group_id={{ selected_group }}{% endif %}">// SYSTEM SYNC</a>
   </div>
   <table>
-    <thead><tr><th>Nome</th><th>GUID</th><th>Azione</th></tr></thead>
+    <thead>
+      <tr>
+        <th>MISSION NAME</th>
+        <th>GUID HASH</th>
+        <th style="text-align: right;">ACTIONS EXEC</th>
+      </tr>
+    </thead>
     <tbody>
     {% for mission in missions %}
       <tr>
-        <td>{{ mission.name or '-' }}</td>
-        <td class="mono">{{ mission.guid }}</td>
-        <td>
+        <td style="font-weight: 700; color: #fff;">{{ mission.name or '-' }}</td>
+        <td class="mono" style="font-size: 0.8rem; color: var(--text-muted);">{{ mission.guid }}</td>
+        <td style="text-align: right;">
           <form method="post" action="/missions/enqueue" class="inline-form">
             <input type="hidden" name="group_id" value="{{ selected_group }}">
             <input type="hidden" name="mission_id" value="{{ mission.guid }}">
-            <button class="btn small" type="submit">Accoda</button>
+            <button class="btn small" type="submit">QUEUE</button>
           </form>
           <form method="post" action="/missions/start-now" class="inline-form">
             <input type="hidden" name="group_id" value="{{ selected_group }}">
             <input type="hidden" name="mission_id" value="{{ mission.guid }}">
-            <button class="btn small success" type="submit">Avvia ora</button>
+            <button class="btn small success" type="submit">START NOW</button>
           </form>
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="3">Nessuna missione trovata.</td></tr>
+      <tr>
+        <td colspan="3" style="font-family: var(--font-mono); color: var(--text-dim); text-align: center;">// NO MISSIONS DETECTED IN SELECTED GROUP</td>
+      </tr>
     {% endfor %}
     </tbody>
   </table>
 </section>
 
-<section class="card">
-  <div class="row space">
-    <h2>Coda missioni</h2>
-    <div class="row">
-      <a class="btn secondary" href="/missions{% if selected_group %}?group_id={{ selected_group }}{% endif %}">Aggiorna coda</a>
+<section class="card" style="margin-top: 20px;">
+  <div class="row space" style="margin-bottom: 12px; align-items: flex-start;">
+    <h2>CHRONOLOGICAL TASK QUEUE</h2>
+    <div class="row" style="gap: 8px;">
+      <a class="btn ghost small" href="/missions{% if selected_group %}?group_id={{ selected_group }}{% endif %}">// SYNC QUEUE</a>
       <form method="post" action="/missions/resume">
         <input type="hidden" name="group_id" value="{{ selected_group }}">
-        <button class="btn" type="submit">Resume / Ready</button>
+        <button class="btn success small" type="submit">READY / RESUME</button>
       </form>
       <form method="post" action="/missions/clear-queue">
         <input type="hidden" name="group_id" value="{{ selected_group }}">
-        <button class="btn danger" type="submit">Pulisci coda</button>
+        <button class="btn danger small" type="submit">FLUSH QUEUE</button>
       </form>
     </div>
   </div>
   <table>
-    <thead><tr><th>ID</th><th>Missione</th><th>Stato</th><th>Creata</th></tr></thead>
+    <thead>
+      <tr>
+        <th>QUEUE ID</th>
+        <th>MISSION PAYLOAD</th>
+        <th>STATE RESPONSE</th>
+        <th>TIMESTAMPS</th>
+      </tr>
+    </thead>
     <tbody>
     {% for item in queue %}
       <tr>
-        <td>{{ item.id or '-' }}</td>
-        <td>{{ item.mission_text or item.mission_id or '-' }}</td>
-        <td>{{ item.state or item.state_text or item.state_id or '-' }}</td>
-        <td>{{ item.created_at or '-' }}</td>
+        <td class="mono">{{ item.id or '-' }}</td>
+        <td class="mono">{{ item.mission_text or item.mission_id or '-' }}</td>
+        <td class="mono" style="color: {% if item.state == 'Done' or item.state_text == 'Done' %}var(--neon-green){% else %}var(--neon-cyan){% endif %};">{{ item.state or item.state_text or item.state_id or '-' }}</td>
+        <td class="mono" style="font-size: 0.8rem; color: var(--text-muted);">{{ item.created_at or '-' }}</td>
       </tr>
     {% else %}
-      <tr><td colspan="4">Coda vuota.</td></tr>
+      <tr>
+        <td colspan="4" style="font-family: var(--font-mono); color: var(--text-dim); text-align: center;">// QUEUE BUFFER EMPTY</td>
+      </tr>
     {% endfor %}
     </tbody>
   </table>

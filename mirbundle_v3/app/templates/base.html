@@ -6,33 +6,49 @@
   <title>{% block title %}MiR Tracking System{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Zen+Dots&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=modern-cockpit-12">
+  <link rel="stylesheet" href="/static/style.css?v=cyber-deck-v1">
 </head>
 <body>
   <aside class="sidebar">
     <div class="brand">
-      <span class="brand-mark">MIR</span>
-      <span class="brand-copy">Robot Command</span>
+      <span class="brand-mark">MIR-100</span>
+      <span class="brand-copy">Holo-Deck OS v3.2</span>
     </div>
     <nav aria-label="Navigazione principale">
-      <a href="/">Dashboard</a>
-      <a href="/missions">Missioni</a>
-      <a href="/maps">Mappe / Localizzazione</a>
-      <a href="/tracking">Tracking</a>
-      <a href="/joystick-lab">Joystick Lab</a>
-      <a href="/settings">Settings</a>
+      <a href="/"><span style="color: var(--neon-cyan); margin-right: 8px;">//01</span> Dashboard</a>
+      <a href="/missions"><span style="color: var(--neon-cyan); margin-right: 8px;">//02</span> Missioni</a>
+      <a href="/maps"><span style="color: var(--neon-cyan); margin-right: 8px;">//03</span> Mappe / Localizzazione</a>
+      <a href="/tracking"><span style="color: var(--neon-cyan); margin-right: 8px;">//04</span> Tracking AprilTag</a>
+      <a href="/joystick-lab"><span style="color: var(--neon-cyan); margin-right: 8px;">//05</span> Joystick Lab</a>
+      <a href="/settings"><span style="color: var(--neon-cyan); margin-right: 8px;">//06</span> Configurazione</a>
     </nav>
   </aside>
   <main class="main">
     <header class="topbar">
-      <div><span>Host</span><strong>{{ settings.host or 'non configurato' }}</strong></div>
-      <div><span>Mission group</span><strong>{{ settings.mission_group_id or 'non impostato' }}</strong></div>
-      <div><span>Camera</span><strong>{{ settings.camera_stream_url or 'non impostata' }}</strong></div>
+      <div>
+        <span>System Host IP</span>
+        <strong>{{ settings.host or 'DISCONNECTED' }}</strong>
+      </div>
+      <div>
+        <span>Active Mission Group</span>
+        <strong>{{ settings.mission_group_id or 'NONE' }}</strong>
+      </div>
+      <div>
+        <span>Telemetry Stream Feed</span>
+        <strong>{{ settings.camera_stream_url or 'INACTIVE' }}</strong>
+      </div>
     </header>
-    {% if message %}<div class="alert success">{{ message }}</div>{% endif %}
-    {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
-    {% if page_error %}<div class="alert error">{{ page_error }}</div>{% endif %}
+    
+    {% if message %}
+      <div class="alert success">// SYSTEM RESPONSE: {{ message }}</div>
+    {% endif %}
+    {% if error %}
+      <div class="alert error">// SYSTEM ERROR: {{ error }}</div>
+    {% endif %}
+    {% if page_error %}
+      <div class="alert error">// HARDWARE FAILURE: {{ page_error }}</div>
+    {% endif %}
+    
     {% block content %}{% endblock %}
   </main>
 </body>
