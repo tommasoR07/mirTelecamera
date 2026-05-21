@@ -395,15 +395,17 @@ class _StreamFrameCache:
         self._ensure_running(url)
         deadline = time.time() + wait_seconds
         fallback = None
+        fallback_age = 999.0
         while time.time() < deadline:
             remaining = max(0.0, deadline - time.time())
             with self.frame_ready:
                 if self.url == url and self.frame is not None and self.frame_id > min_frame_id:
                     return self.frame.copy()
                 fallback = self.frame.copy() if self.url == url and self.frame is not None else None
+                fallback_age = time.time() - self.last_frame_ts if self.last_frame_ts else 999.0
                 last_error = self.last_error
                 self.frame_ready.wait(timeout=min(0.012, remaining))
-        if fallback is not None:
+        if fallback is not None and fallback_age <= 0.35:
             return fallback
         raise RuntimeError(last_error or f'Nessun frame disponibile dallo stream: {url}')
 
@@ -446,28 +448,43 @@ class _StreamFrameCache:
 
     def _loop(self, url: str) -> None:
         cv2, _ = _load_cv2()
-        cap = cv2.VideoCapture(url)
-        with self.lock:
-            if self.url == url and self.running:
-                self.capture = cap
+        cap = None
         try:
-            if hasattr(cv2, 'CAP_PROP_BUFFERSIZE'):
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-            if hasattr(cv2, 'CAP_PROP_FPS'):
-                cap.set(cv2.CAP_PROP_FPS, 60)
-            if not cap.isOpened():
-                with self.lock:
-                    self.last_error = f'Stream video non raggiungibile: {url}'
-                return
             while True:
                 with self.lock:
                     if not self.running or self.url != url:
                         return
+                if cap is None:
+                    cap = cv2.VideoCapture(url)
+                    with self.lock:
+                        if self.url == url and self.running:
+                            self.capture = cap
+                    if hasattr(cv2, 'CAP_PROP_BUFFERSIZE'):
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    if hasattr(cv2, 'CAP_PROP_FPS'):
+                        cap.set(cv2.CAP_PROP_FPS, 60)
+                    if not cap.isOpened():
+                        with self.frame_ready:
+                            self.last_error = f'Stream video non raggiungibile: {url}'
+                            self.frame_ready.notify_all()
+                        try:
+                            cap.release()
+                        except Exception:
+                            pass
+                        cap = None
+                        time.sleep(0.25)
+                        continue
                 ok, frame = cap.read()
                 if not ok or frame is None:
-                    with self.lock:
+                    with self.frame_ready:
                         self.last_error = f'Impossibile leggere un frame dallo stream: {url}'
-                    time.sleep(0.08)
+                        self.frame_ready.notify_all()
+                    try:
+                        cap.release()
+                    except Exception:
+                        pass
+                    cap = None
+                    time.sleep(0.12)
                     continue
                 with self.lock:
                     if self.running and self.url == url:
@@ -483,7 +500,9 @@ class _StreamFrameCache:
                     self.capture = None
                 if self.url == url:
                     self.running = False
-            cap.release()
+                    self.frame_ready.notify_all()
+            if cap is not None:
+                cap.release()
 
 
 _STREAM_FRAME_CACHE = _StreamFrameCache()
@@ -895,7 +914,13 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
         })
         return result
     except Exception as exc:
-        return {'ok': False, 'error': str(exc), 'command': {'linear': 0.0, 'angular': 0.0, 'suggestion': 'errore: stop'}}
+        return {
+            'ok': False,
+            'error': str(exc),
+            'transient': True,
+            'command': {'linear': 0.0, 'angular': 0.0, 'suggestion': 'errore camera: retry'},
+            'perf': _stream_frame_meta(),
+        }
 
 
 @app.post('/api/tracking/stop')

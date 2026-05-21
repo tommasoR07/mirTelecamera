@@ -64,6 +64,7 @@
   let lastBrakeAt = 0;
   let lastCommandUiAt = 0;
   let lastBackendFrameId = 0;
+  let rosReconnectAt = 0;
   let selectedTagDictionary = '';
   let lastTag = null;
   let pid = resetPid();
@@ -83,6 +84,7 @@
       curveInPlace: false,
       lastLoopAt: 0,
       lastLoopMs: 0,
+      backendErrorFrames: 0,
     };
   }
 
@@ -192,7 +194,7 @@
   }
 
   function requestManualControl() {
-    const webSessionId = `aruco_tracker_${Date.now()}`;
+    const webSessionId = 'MIRITISCUNEO';
     rosSend({
       op: 'call_service',
       service: '/mirsupervisor/setRobotState',
@@ -267,6 +269,11 @@
         },
       },
     });
+    if (!ok) {
+      advertised = false;
+      setText(rosStateEl, 'ROSBridge instabile, retry...');
+      return false;
+    }
     if (ok) {
       const now = performance.now();
       if (now - lastCommandUiAt > 100 || (linear === 0 && angular === 0)) {
@@ -350,16 +357,16 @@
     if (!Number.isFinite(sizeRatio) || !Number.isFinite(rawOffset)) return { linear: 0, angular: 0 };
     pid.filteredOffset = pid.filteredOffset === null
       ? rawOffset
-      : pid.filteredOffset * 0.72 + rawOffset * 0.28;
+      : pid.filteredOffset * 0.48 + rawOffset * 0.52;
     const offset = pid.filteredOffset;
 
     const distanceError = desired - sizeRatio;
     const offsetError = offset;
     const distanceDeadband = 0.030;
-    const offsetDeadband = 0.130;
+    const offsetDeadband = 0.055;
     const offsetSign = Math.abs(offsetError) > offsetDeadband ? Math.sign(offsetError) : 0;
-    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.35) {
-      pid.angularBrakeUntil = nowMs + 220;
+    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.22) {
+      pid.angularBrakeUntil = nowMs + 70;
       pid.offsetIntegral = 0;
     }
     if (offsetSign) pid.lastOffsetSign = offsetSign;
@@ -373,9 +380,9 @@
 
     const maxLinear = number(maxLinearInput, 1.5);
     const maxAngular = number(maxAngularInput, 1.5);
-    const angularWindow = 0.55;
-    const curveEnter = 0.46;
-    const curveExit = 0.28;
+    const angularWindow = 0.26;
+    const curveEnter = 0.38;
+    const curveExit = 0.24;
     pid.curveInPlace = Math.abs(offsetError) > curveEnter || (pid.curveInPlace && Math.abs(offsetError) > curveExit);
 
     let linear = 0;
@@ -386,29 +393,31 @@
         number(pidInputs.linearKp, 7.5) * distanceError +
         number(pidInputs.linearKi, 0) * pid.distanceIntegral +
         number(pidInputs.linearKd, 0.45) * Math.max(0, distanceDerivative);
-      linear = maxLinear * clamp(Math.abs(effort), 0.25, 1);
+      const turnPriority = 1 - clamp((Math.abs(offsetError) - offsetDeadband) / 0.42, 0, 0.62);
+      linear = maxLinear * clamp(Math.abs(effort), 0.18, 1) * turnPriority;
     } else if (distanceError < -distanceDeadband * 1.8) {
       linear = -maxLinear * 0.20;
     }
 
     let angular = 0;
     if (pid.curveInPlace) {
-      const curvePower = clamp(Math.abs(offsetError) / 0.82, 0.35, 1);
+      const curvePower = clamp(Math.abs(offsetError) / 0.58, 0.70, 1);
       angular = -Math.sign(offsetError) * maxAngular * curvePower;
     } else if (nowMs < pid.angularBrakeUntil) {
       angular = 0;
-    } else if (pid.visibleFrames >= 2 && Math.abs(offsetError) > offsetDeadband) {
+    } else if (Math.abs(offsetError) > offsetDeadband) {
       const effort =
-        number(pidInputs.angularKp, 6.5) * (Math.abs(offsetError) - offsetDeadband) +
-        number(pidInputs.angularKi, 0) * Math.abs(pid.offsetIntegral);
-      const shaped = clamp(effort, 0, 1) * clamp(Math.abs(offsetError) / angularWindow, 0, 1);
+        number(pidInputs.angularKp, 12.5) * (Math.abs(offsetError) - offsetDeadband) +
+        number(pidInputs.angularKi, 0) * Math.abs(pid.offsetIntegral) +
+        0.28 * Math.max(0, Math.abs(offsetDerivative));
+      const shaped = clamp(effort, 0.26, 1) * clamp(Math.abs(offsetError) / angularWindow, 0.34, 1);
       angular = -Math.sign(offsetError) * maxAngular * shaped;
     }
 
     linear = clamp(linear, -maxLinear * 0.20, maxLinear);
     const nearCenterLimit = pid.curveInPlace
       ? maxAngular
-      : maxAngular * clamp((Math.abs(offsetError) - offsetDeadband) / angularWindow, 0, 1);
+      : maxAngular * clamp((Math.abs(offsetError) - offsetDeadband) / angularWindow, 0.26, 1);
     angular = clamp(angular, -nearCenterLimit, nearCenterLimit);
     setText(curveModeEl, pid.curveInPlace ? 'attiva' : 'spenta');
     return { linear, angular, mode: pid.curveInPlace ? 'curva sul posto' : '' };
@@ -432,15 +441,15 @@
     if (!data || !data.ok) {
       const msg = data?.error || 'errore rilevamento AprilTag';
       pid.missedFrames += 1;
+      pid.backendErrorFrames += 1;
       pid.visibleFrames = 0;
       if (renderUi) {
         const suffix = followEnabled ? ` | retry ${pid.missedFrames}` : '';
         setText(targetStateEl, `${msg}${suffix}`);
-        setText(offsetEl, '-');
-        setText(ratioEl, '-');
-        setText(precisionEl, '-');
-        setText(curveModeEl, 'spenta');
-        setText(perfEl, '-');
+        if (pid.backendErrorFrames > 8) {
+          setText(precisionEl, 'camera instabile');
+          setText(perfEl, 'retry camera');
+        }
         if (pid.missedFrames % 3 === 1) drawGuide();
       }
       if (followEnabled) safeBrake('camera retry');
@@ -463,6 +472,7 @@
     lastSeenAt = performance.now();
     pid.visibleFrames += 1;
     pid.missedFrames = 0;
+    pid.backendErrorFrames = 0;
     const cmd = data.command || {};
     if (tag.dictionary) selectedTagDictionary = tag.dictionary;
     lastTag = {
@@ -524,16 +534,22 @@
   async function tagStep(acquireTarget) {
     if (busy) return null;
     busy = true;
+    let timeout = null;
     const now = performance.now();
     const renderUi = acquireTarget || now - lastUiAt > 100;
     if (renderUi) lastUiAt = now;
     try {
       const fetchStarted = performance.now();
+      const controller = new AbortController();
+      timeout = window.setTimeout(() => controller.abort(), acquireTarget ? 1400 : 520);
       const res = await fetch('/api/tracking/apriltag-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(currentPayload(acquireTarget)),
+        signal: controller.signal,
       });
+      window.clearTimeout(timeout);
+      timeout = null;
       const text = await res.text();
       const fetchMs = performance.now() - fetchStarted;
       let data;
@@ -548,11 +564,12 @@
       updateProfiler(data, fetchMs);
       return cmd;
     } catch (err) {
-      setText(targetStateEl, `errore chiamata backend: ${err}`);
-      drawGuide();
-      updateProfiler(null, 0);
+      const data = { ok: false, error: err?.name === 'AbortError' ? 'timeout camera, retry' : `errore backend: ${err}` };
+      updateStats(data, renderUi);
+      updateProfiler(data, 0);
       return null;
     } finally {
+      if (timeout) window.clearTimeout(timeout);
       busy = false;
     }
   }
@@ -622,7 +639,14 @@
     const cmd = await tagStep(false);
     if (followEnabled && cmd) {
       const out = computePid(cmd);
-      publishVelocity(out.linear, out.angular, out.mode);
+      const sent = publishVelocity(out.linear, out.angular, out.mode);
+      if (!sent && performance.now() > rosReconnectAt) {
+        rosReconnectAt = performance.now() + 1200;
+        ensureRosBridge();
+      }
+    } else if (followEnabled && (!socket || socket.readyState !== WebSocket.OPEN || !joystickToken) && performance.now() > rosReconnectAt) {
+      rosReconnectAt = performance.now() + 1200;
+      ensureRosBridge();
     }
     const elapsed = performance.now() - started;
     const targetMs = 1000 / Math.max(1, Math.min(144, number(pidHzInput, 90)));
