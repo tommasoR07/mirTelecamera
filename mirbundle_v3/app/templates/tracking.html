@@ -64,12 +64,12 @@
       <button class="btn success" id="saveTrackingSettingsBtn" type="button">Salva valori tracking</button>
       <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '90' }}">
       <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '720' }}">
-      <input id="trackingPidLinearKp" type="hidden" value="7.50">
-      <input id="trackingPidLinearKi" type="hidden" value="0.00">
-      <input id="trackingPidLinearKd" type="hidden" value="0.45">
-      <input id="trackingPidAngularKp" type="hidden" value="12.50">
-      <input id="trackingPidAngularKi" type="hidden" value="0.00">
-      <input id="trackingPidAngularKd" type="hidden" value="0.00">
+      <input id="trackingPidLinearKp" type="hidden" value="4.20">
+      <input id="trackingPidLinearKi" type="hidden" value="0.08">
+      <input id="trackingPidLinearKd" type="hidden" value="0.55">
+      <input id="trackingPidAngularKp" type="hidden" value="5.60">
+      <input id="trackingPidAngularKi" type="hidden" value="0.10">
+      <input id="trackingPidAngularKd" type="hidden" value="0.18">
     </div>
   </section>
 
@@ -92,5 +92,5 @@
   </aside>
 </div>
 
-<script src="/static/tracking.js?v=pid-rosbridge-21"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-23"></script>
 {% endblock %}

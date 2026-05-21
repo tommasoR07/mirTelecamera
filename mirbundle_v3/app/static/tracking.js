@@ -77,11 +77,16 @@
       offsetIntegral: 0,
       offsetPrev: 0,
       filteredOffset: null,
+      filteredSize: null,
+      offsetVelocity: 0,
+      sizeVelocity: 0,
       visibleFrames: 0,
       missedFrames: 0,
       angularBrakeUntil: 0,
       lastOffsetSign: 0,
       curveInPlace: false,
+      lastLinear: 0,
+      lastAngular: 0,
       lastLoopAt: 0,
       lastLoopMs: 0,
       backendErrorFrames: 0,
@@ -99,6 +104,11 @@
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+  }
+
+  function smoothstep(edge0, edge1, value) {
+    const t = clamp((value - edge0) / Math.max(0.0001, edge1 - edge0), 0, 1);
+    return t * t * (3 - 2 * t);
   }
 
   function currentTrackingSettings() {
@@ -345,82 +355,121 @@
     ctx.fillText(`APRILTAG ID ${tag.id}`, tag.x + 6, Math.max(26, tag.y - 8));
   }
 
+  function gateMode(absOffset, absAngular) {
+    if (absOffset > 0.18) return 'riallineamento';
+    if (absAngular > 0.18) return 'micro-correzione';
+    return '';
+  }
+
   function computePid(command) {
     const nowMs = performance.now();
     const now = nowMs / 1000;
-    const dt = pid.lastTs ? clamp(now - pid.lastTs, 0.02, 0.20) : 0.05;
+    const dt = pid.lastTs ? clamp(now - pid.lastTs, 0.008, 0.10) : 0.016;
     pid.lastTs = now;
 
     const desired = number(desiredRatioInput, 18) / 100;
     const sizeRatio = Number(command.size_ratio);
     const rawOffset = Number(command.offset_x);
     if (!Number.isFinite(sizeRatio) || !Number.isFinite(rawOffset)) return { linear: 0, angular: 0 };
-    pid.filteredOffset = pid.filteredOffset === null
-      ? rawOffset
-      : pid.filteredOffset * 0.48 + rawOffset * 0.52;
-    const offset = pid.filteredOffset;
 
-    const distanceError = desired - sizeRatio;
-    const offsetError = offset;
-    const distanceDeadband = 0.030;
-    const offsetDeadband = 0.055;
+    const offsetAlpha = clamp(dt / (0.026 + dt), 0.18, 0.58);
+    const sizeAlpha = clamp(dt / (0.045 + dt), 0.12, 0.42);
+    const previousOffset = pid.filteredOffset ?? rawOffset;
+    const previousSize = pid.filteredSize ?? sizeRatio;
+    pid.filteredOffset = previousOffset + (rawOffset - previousOffset) * offsetAlpha;
+    pid.filteredSize = previousSize + (sizeRatio - previousSize) * sizeAlpha;
+
+    const rawOffsetVelocity = (pid.filteredOffset - previousOffset) / dt;
+    const rawSizeVelocity = (pid.filteredSize - previousSize) / dt;
+    const velocityAlpha = clamp(dt / (0.055 + dt), 0.12, 0.46);
+    pid.offsetVelocity += (rawOffsetVelocity - pid.offsetVelocity) * velocityAlpha;
+    pid.sizeVelocity += (rawSizeVelocity - pid.sizeVelocity) * velocityAlpha;
+
+    const offsetError = pid.filteredOffset;
+    const distanceError = desired - pid.filteredSize;
+    const maxLinear = number(maxLinearInput, 1.5);
+    const maxAngular = number(maxAngularInput, 1.5);
+
+    const offsetDeadband = 0.045;
+    const distanceDeadband = 0.018;
     const offsetSign = Math.abs(offsetError) > offsetDeadband ? Math.sign(offsetError) : 0;
-    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.22) {
-      pid.angularBrakeUntil = nowMs + 70;
+    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.24) {
+      pid.angularBrakeUntil = nowMs + 90;
       pid.offsetIntegral = 0;
+      pid.lastAngular = 0;
     }
     if (offsetSign) pid.lastOffsetSign = offsetSign;
 
-    pid.distanceIntegral = clamp(pid.distanceIntegral + distanceError * dt, -0.35, 0.35);
-    pid.offsetIntegral = clamp(pid.offsetIntegral + offsetError * dt, -0.45, 0.45);
-    const distanceDerivative = (distanceError - pid.distancePrev) / dt;
-    const offsetDerivative = (offsetError - pid.offsetPrev) / dt;
+    const absOffset = Math.abs(offsetError);
+    const absDistance = Math.abs(distanceError);
+    const lateralVelocity = pid.offsetVelocity;
+    const distanceVelocity = -pid.sizeVelocity;
+    const closingTooFast = distanceError > 0 ? Math.max(0, -distanceVelocity) : Math.max(0, distanceVelocity);
+
+    const curveEnter = 0.34;
+    const curveExit = 0.20;
+    pid.curveInPlace = absOffset > curveEnter || (pid.curveInPlace && absOffset > curveExit);
+
+    const allowAngularIntegral = !pid.curveInPlace && absOffset < 0.26 && absOffset > offsetDeadband;
+    pid.offsetIntegral = allowAngularIntegral ? clamp(pid.offsetIntegral + offsetError * dt, -0.18, 0.18) : 0;
+    const allowLinearIntegral = absOffset < 0.16 && absDistance < 0.16 && absDistance > distanceDeadband;
+    pid.distanceIntegral = allowLinearIntegral ? clamp(pid.distanceIntegral + distanceError * dt, -0.16, 0.16) : 0;
+
     pid.distancePrev = distanceError;
     pid.offsetPrev = offsetError;
 
-    const maxLinear = number(maxLinearInput, 1.5);
-    const maxAngular = number(maxAngularInput, 1.5);
-    const angularWindow = 0.26;
-    const curveEnter = 0.38;
-    const curveExit = 0.24;
-    pid.curveInPlace = Math.abs(offsetError) > curveEnter || (pid.curveInPlace && Math.abs(offsetError) > curveExit);
-
-    let linear = 0;
+    let angularTarget = 0;
     if (pid.curveInPlace) {
-      pid.distanceIntegral = 0;
-    } else if (distanceError > distanceDeadband) {
-      const effort =
-        number(pidInputs.linearKp, 7.5) * distanceError +
-        number(pidInputs.linearKi, 0) * pid.distanceIntegral +
-        number(pidInputs.linearKd, 0.45) * Math.max(0, distanceDerivative);
-      const turnPriority = 1 - clamp((Math.abs(offsetError) - offsetDeadband) / 0.42, 0, 0.62);
-      linear = maxLinear * clamp(Math.abs(effort), 0.18, 1) * turnPriority;
-    } else if (distanceError < -distanceDeadband * 1.8) {
-      linear = -maxLinear * 0.20;
-    }
-
-    let angular = 0;
-    if (pid.curveInPlace) {
-      const curvePower = clamp(Math.abs(offsetError) / 0.58, 0.70, 1);
-      angular = -Math.sign(offsetError) * maxAngular * curvePower;
+      const curveDemand = smoothstep(curveExit, 0.72, absOffset);
+      const damping = clamp(1 - Math.max(0, -Math.sign(offsetError || 1) * lateralVelocity) * 0.040, 0.42, 1);
+      angularTarget = -Math.sign(offsetError || 1) * maxAngular * clamp(0.28 + curveDemand * 0.62, 0, 0.90) * damping;
     } else if (nowMs < pid.angularBrakeUntil) {
-      angular = 0;
-    } else if (Math.abs(offsetError) > offsetDeadband) {
-      const effort =
-        number(pidInputs.angularKp, 12.5) * (Math.abs(offsetError) - offsetDeadband) +
-        number(pidInputs.angularKi, 0) * Math.abs(pid.offsetIntegral) +
-        0.28 * Math.max(0, Math.abs(offsetDerivative));
-      const shaped = clamp(effort, 0.26, 1) * clamp(Math.abs(offsetError) / angularWindow, 0.34, 1);
-      angular = -Math.sign(offsetError) * maxAngular * shaped;
+      angularTarget = 0;
+    } else if (absOffset > offsetDeadband) {
+      const kp = number(pidInputs.angularKp, 5.6);
+      const ki = number(pidInputs.angularKi, 0.10);
+      const kd = number(pidInputs.angularKd, 0.18);
+      const normalized = kp * offsetError + ki * pid.offsetIntegral + kd * lateralVelocity;
+      const authority = smoothstep(offsetDeadband, 0.44, absOffset);
+      angularTarget = -maxAngular * clamp(normalized, -1, 1) * clamp(0.18 + authority * 0.82, 0, 1);
     }
 
-    linear = clamp(linear, -maxLinear * 0.20, maxLinear);
-    const nearCenterLimit = pid.curveInPlace
-      ? maxAngular
-      : maxAngular * clamp((Math.abs(offsetError) - offsetDeadband) / angularWindow, 0.26, 1);
-    angular = clamp(angular, -nearCenterLimit, nearCenterLimit);
+    let linearTarget = 0;
+    if (!pid.curveInPlace) {
+      const alignmentGate = 1 - smoothstep(0.08, 0.36, absOffset);
+      const angularGate = 1 - smoothstep(maxAngular * 0.18, maxAngular * 0.78, Math.abs(pid.lastAngular));
+      const gate = clamp(alignmentGate * angularGate, 0, 1);
+      if (distanceError > distanceDeadband) {
+        const kp = number(pidInputs.linearKp, 4.2);
+        const ki = number(pidInputs.linearKi, 0.08);
+        const kd = number(pidInputs.linearKd, 0.55);
+        const normalized = kp * distanceError + ki * pid.distanceIntegral - kd * closingTooFast;
+        const approachProfile = smoothstep(distanceDeadband, 0.28, distanceError);
+        linearTarget = maxLinear * clamp(normalized, 0, 1) * clamp(0.20 + approachProfile * 0.80, 0, 1) * gate;
+      } else if (distanceError < -distanceDeadband * 1.5 && absOffset < 0.18) {
+        const reverseProfile = smoothstep(distanceDeadband * 1.5, 0.14, -distanceError);
+        linearTarget = -maxLinear * 0.18 * reverseProfile;
+      }
+    }
+
+    const angularLimit = pid.curveInPlace
+      ? maxAngular * 0.90
+      : maxAngular * clamp(0.10 + smoothstep(offsetDeadband, 0.46, absOffset) * 0.90, 0, 1);
+    angularTarget = clamp(angularTarget, -angularLimit, angularLimit);
+    if (absOffset < 0.025 && Math.abs(lateralVelocity) < 0.18) angularTarget = 0;
+    if (Math.abs(distanceError) < 0.012 && Math.abs(pid.sizeVelocity) < 0.08) linearTarget = 0;
+
+    const angularSlew = maxAngular * dt * (pid.curveInPlace ? 6.4 : 4.6);
+    const linearAccel = maxLinear * dt * 3.2;
+    const linearBrake = maxLinear * dt * 6.8;
+    const linearStep = Math.abs(linearTarget) < Math.abs(pid.lastLinear) ? linearBrake : linearAccel;
+    const angular = clamp(angularTarget, pid.lastAngular - angularSlew, pid.lastAngular + angularSlew);
+    const linear = clamp(linearTarget, pid.lastLinear - linearStep, pid.lastLinear + linearStep);
+    pid.lastAngular = angular;
+    pid.lastLinear = linear;
     setText(curveModeEl, pid.curveInPlace ? 'attiva' : 'spenta');
-    return { linear, angular, mode: pid.curveInPlace ? 'curva sul posto' : '' };
+    const mode = pid.curveInPlace ? 'curva sul posto' : gateMode(absOffset, Math.abs(angular));
+    return { linear, angular, mode };
   }
 
   function detectionPrecision(tag, cmd, perf) {
