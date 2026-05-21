@@ -61,6 +61,7 @@
       missedFrames: 0,
       angularBrakeUntil: 0,
       lastOffsetSign: 0,
+      curveInPlace: false,
       lastLoopAt: 0,
       lastLoopMs: 0,
     };
@@ -233,7 +234,7 @@
     });
   }
 
-  function publishVelocity(linear, angular) {
+  function publishVelocity(linear, angular, mode = '') {
     if (!advertised) advertiseJoystick();
     if (!joystickToken) return false;
     const ok = rosSend({
@@ -247,7 +248,10 @@
         },
       },
     });
-    if (ok) setText(commandEl, `linear=${linear.toFixed(3)} angular=${angular.toFixed(3)}`);
+    if (ok) {
+      const suffix = mode ? ` | ${mode}` : '';
+      setText(commandEl, `linear=${linear.toFixed(3)} angular=${angular.toFixed(3)}${suffix}`);
+    }
     return ok;
   }
 
@@ -337,9 +341,14 @@
     const maxLinear = number(maxLinearInput, 1.5);
     const maxAngular = number(maxAngularInput, 1.5);
     const angularWindow = 0.55;
+    const curveEnter = 0.46;
+    const curveExit = 0.28;
+    pid.curveInPlace = Math.abs(offsetError) > curveEnter || (pid.curveInPlace && Math.abs(offsetError) > curveExit);
 
     let linear = 0;
-    if (distanceError > distanceDeadband) {
+    if (pid.curveInPlace) {
+      pid.distanceIntegral = 0;
+    } else if (distanceError > distanceDeadband) {
       const effort =
         number(pidInputs.linearKp, 7.5) * distanceError +
         number(pidInputs.linearKi, 0) * pid.distanceIntegral +
@@ -350,7 +359,10 @@
     }
 
     let angular = 0;
-    if (nowMs < pid.angularBrakeUntil) {
+    if (pid.curveInPlace) {
+      const curvePower = clamp(Math.abs(offsetError) / 0.82, 0.35, 1);
+      angular = -Math.sign(offsetError) * maxAngular * curvePower;
+    } else if (nowMs < pid.angularBrakeUntil) {
       angular = 0;
     } else if (pid.visibleFrames >= 2 && Math.abs(offsetError) > offsetDeadband) {
       const effort =
@@ -361,9 +373,11 @@
     }
 
     linear = clamp(linear, -maxLinear * 0.20, maxLinear);
-    const nearCenterLimit = maxAngular * clamp((Math.abs(offsetError) - offsetDeadband) / angularWindow, 0, 1);
+    const nearCenterLimit = pid.curveInPlace
+      ? maxAngular
+      : maxAngular * clamp((Math.abs(offsetError) - offsetDeadband) / angularWindow, 0, 1);
     angular = clamp(angular, -nearCenterLimit, nearCenterLimit);
-    return { linear, angular };
+    return { linear, angular, mode: pid.curveInPlace ? 'curva sul posto' : '' };
   }
 
   function updateStats(data) {
@@ -500,7 +514,7 @@
     const cmd = await tagStep(false);
     if (followEnabled && cmd) {
       const out = computePid(cmd);
-      publishVelocity(out.linear, out.angular);
+      publishVelocity(out.linear, out.angular, out.mode);
     }
     const elapsed = performance.now() - started;
     const targetMs = 1000 / Math.max(1, Math.min(60, number(pidHzInput, 30)));
