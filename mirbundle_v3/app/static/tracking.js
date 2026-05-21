@@ -269,6 +269,10 @@
     pid = resetPid();
   }
 
+  function safeBrake(mode = 'ricerca target') {
+    publishVelocity(0, 0, mode);
+  }
+
   function ensureCanvas() {
     if (!streamImg || !overlay || !ctx) return false;
     const rect = streamImg.getBoundingClientRect();
@@ -410,31 +414,33 @@
   function updateStats(data, renderUi = true) {
     if (!data || !data.ok) {
       const msg = data?.error || 'errore rilevamento AprilTag';
+      pid.missedFrames += 1;
+      pid.visibleFrames = 0;
       if (renderUi) {
-        setText(targetStateEl, msg);
+        const suffix = followEnabled ? ` | retry ${pid.missedFrames}` : '';
+        setText(targetStateEl, `${msg}${suffix}`);
         setText(offsetEl, '-');
         setText(ratioEl, '-');
         setText(precisionEl, '-');
         setText(curveModeEl, 'spenta');
         setText(perfEl, '-');
-        drawGuide();
+        if (pid.missedFrames % 3 === 1) drawGuide();
       }
-      pid.missedFrames += 1;
-      pid.visibleFrames = 0;
-      if (followEnabled) stopRobot();
+      if (followEnabled) safeBrake('camera retry');
       return null;
     }
     const tag = data.tag || null;
     if (renderUi) drawTag(tag);
     if (!tag) {
+      pid.missedFrames += 1;
+      pid.visibleFrames = 0;
       if (renderUi) {
-        setText(targetStateEl, selectedTagId === null ? 'nessun AprilTag rilevato' : `AprilTag ID ${selectedTagId} non visibile`);
+        const suffix = followEnabled ? ` | ricerca ${pid.missedFrames}` : '';
+        setText(targetStateEl, selectedTagId === null ? `nessun AprilTag rilevato${suffix}` : `AprilTag ID ${selectedTagId} non visibile${suffix}`);
         setText(precisionEl, 'perso');
         setText(curveModeEl, 'spenta');
       }
-      pid.missedFrames += 1;
-      pid.visibleFrames = 0;
-      if (followEnabled) stopRobot();
+      if (followEnabled) safeBrake('target perso');
       return null;
     }
     lastSeenAt = performance.now();
@@ -535,9 +541,13 @@
 
   async function startFollow() {
     if (selectedTagId === null) {
-      setText(followStateEl, 'prima premi Riconosci AprilTag');
-      drawGuide();
-      return;
+      setText(followStateEl, 'acquisizione automatica AprilTag...');
+      await tagStep(true);
+      if (selectedTagId === null) {
+        setText(followStateEl, 'nessun AprilTag agganciato');
+        drawGuide();
+        return;
+      }
     }
     const ok = await ensureRosBridge();
     if (!ok) {
@@ -546,6 +556,7 @@
     }
     followEnabled = true;
     pid = resetPid();
+    lastBackendFrameId = 0;
     lastSeenAt = performance.now();
     setText(followStateEl, `PID attivo su AprilTag ID ${selectedTagId}`);
     followLoop();

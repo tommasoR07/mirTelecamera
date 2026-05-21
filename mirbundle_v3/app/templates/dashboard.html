@@ -11,9 +11,9 @@
 {% set is_warning_state = 'error' in state_l or 'emergency' in state_l or 'protective' in state_l or 'abort' in state_l or 'paused' in state_l or 'pause' in state_l %}
 
 <div class="dashboard-heading">
-  <p class="eyebrow">Robot operations</p>
-  <h1>Dashboard robot</h1>
-  <p>Controllo rapido MiR, stato live e tracking vision in un cockpit pulito.</p>
+  <p class="eyebrow">MIR100 command deck</p>
+  <h1>Control Deck</h1>
+  <p>Stato live, recovery rapido e visione robot in una console unica.</p>
 </div>
 
 {% if is_low_battery or is_warning_state %}
@@ -48,11 +48,11 @@
     </div>
   </div>
   <div class="robot-hud">
-    <p class="eyebrow">Live robot console</p>
+    <p class="eyebrow">Stato robot live</p>
     <h2>{{ status.robot_name or 'MiR 100' }}</h2>
     <div class="status-stack">
       <span class="status-pill {{ 'danger' if is_warning_state else 'success' }}">{{ state_text }}</span>
-      <span class="status-pill {{ 'danger' if is_low_battery else '' }}">Battery {{ battery_display }}%</span>
+      <span class="status-pill {{ 'danger' if is_low_battery else '' }}">Batteria {{ battery_display }}%</span>
     </div>
     <div class="battery-ring {{ 'danger' if is_low_battery else '' }}" style="--battery: {{ battery_display if battery_display != '-' else 0 }}%">
       <span>{{ battery_display }}</span>
@@ -60,7 +60,7 @@
     </div>
     <dl class="hud-metrics">
       <div><dt>State</dt><dd class="{{ 'text-danger' if is_warning_state else '' }}">{{ state_text }}</dd></div>
-      <div><dt>Battery</dt><dd class="{{ 'text-danger' if is_low_battery else '' }}">{{ battery_display }}%</dd></div>
+      <div><dt>Batteria</dt><dd class="{{ 'text-danger' if is_low_battery else '' }}">{{ battery_display }}%</dd></div>
       <div><dt>Mode</dt><dd>{{ mode_text or '-' }}</dd></div>
     </dl>
   </div>
@@ -69,7 +69,7 @@
 <div class="dashboard-actions">
   <a class="btn" href="/">Aggiorna</a>
   <form method="post" action="/robot/ready">
-    <button class="btn success" type="submit">Ready / Resume</button>
+    <button class="btn success ready" type="submit">READY / RESUME</button>
   </form>
   <form method="post" action="/robot/clear-errors">
     <button class="btn danger" type="submit">Reset errori</button>

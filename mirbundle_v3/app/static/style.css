@@ -14,8 +14,9 @@
   --warn: #f4c95d;
   --shadow: 0 18px 55px rgba(0,0,0,.32);
   --radius: 12px;
-  --mono: "Cascadia Code", "Consolas", monospace;
-  --sans: "Bahnschrift", "Aptos", "Segoe UI Variable", "Segoe UI", sans-serif;
+  --mono: "Share Tech Mono", "Cascadia Code", "Consolas", monospace;
+  --sans: "Rajdhani", "Bahnschrift", "Aptos", "Segoe UI Variable", "Segoe UI", sans-serif;
+  --display: "Orbitron", "Audiowide", "Rajdhani", "Bahnschrift", sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -56,11 +57,12 @@ a { color: inherit; }
 }
 
 .brand-mark {
-  font-family: var(--mono);
+  font-family: var(--display);
   font-size: 2rem;
   font-weight: 800;
   line-height: 1;
   color: var(--text);
+  letter-spacing: .08em;
 }
 
 .brand-copy {
@@ -142,16 +144,16 @@ h1 {
   max-width: 980px;
   color: #f8fbfa;
   font-size: clamp(2.2rem, 4vw, 4.8rem);
-  font-family: var(--sans);
-  font-weight: 700;
+  font-family: var(--display);
+  font-weight: 800;
   line-height: .95;
-  letter-spacing: 0;
+  letter-spacing: .02em;
 }
 
 h2 {
   margin: 0 0 16px;
   color: #dce5e1;
-  font-family: var(--sans);
+  font-family: var(--display);
   font-size: .78rem;
   font-weight: 700;
   letter-spacing: .11em;
@@ -332,9 +334,9 @@ model-viewer:not(:defined) {
 .robot-hud h2 {
   margin: 0;
   color: var(--text);
-  font-family: var(--sans);
+  font-family: var(--display);
   font-size: clamp(2.4rem, 4vw, 5rem);
-  letter-spacing: 0;
+  letter-spacing: .02em;
   line-height: .92;
   text-transform: none;
 }
@@ -546,6 +548,22 @@ textarea { resize: vertical; }
   border-color: rgba(66,232,164,.45);
   background: rgba(66,232,164,.13);
   color: #eafff7;
+}
+
+.btn.ready {
+  border-color: rgba(66,232,164,.78);
+  background:
+    linear-gradient(180deg, rgba(66,232,164,.34), rgba(66,232,164,.18)),
+    #10251d;
+  color: #ecfff8;
+  box-shadow: 0 0 0 1px rgba(66,232,164,.12), 0 14px 38px rgba(66,232,164,.14);
+}
+
+.btn.ready:hover {
+  border-color: rgba(103,255,191,.92);
+  background:
+    linear-gradient(180deg, rgba(66,232,164,.42), rgba(66,232,164,.22)),
+    #123024;
 }
 
 .btn.warn { border-color: rgba(244,201,93,.45); background: rgba(244,201,93,.12); color: #ffefbd; }
