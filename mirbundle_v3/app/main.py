@@ -610,8 +610,10 @@ async def _load_tracking_frame(snapshot_url: str, stream_url: str = '', min_fram
 def _detect_apriltags_from_frame(
     frame,
     target_id: int | None = None,
+    target_dictionary: str = '',
     acquire_target: bool = False,
     max_detect_width: int = 640,
+    allow_dictionary_fallback: bool = True,
 ) -> dict[str, Any]:
     if frame is None:
         raise RuntimeError('Frame camera non disponibile.')
@@ -629,8 +631,18 @@ def _detect_apriltags_from_frame(
         raise RuntimeError('Modulo AprilTag non disponibile. Installa: pip install opencv-contrib-python-headless')
 
     aruco = cv2.aruco
-    # In follow teniamo solo 36h11: provare piu' dizionari triplica la latenza.
-    dict_names = ['DICT_APRILTAG_36h11'] if target_id is not None and not acquire_target else ['DICT_APRILTAG_36h11', 'DICT_APRILTAG_25h9', 'DICT_APRILTAG_16h5']
+    all_dict_names = ['DICT_APRILTAG_36h11', 'DICT_APRILTAG_25h9', 'DICT_APRILTAG_16h5']
+    preferred = target_dictionary.strip()
+    if preferred and not preferred.startswith('DICT_'):
+        preferred = f'DICT_{preferred}'
+    if preferred in all_dict_names:
+        dict_names = [preferred] + [name for name in all_dict_names if name != preferred]
+    elif target_id is not None and not acquire_target and not allow_dictionary_fallback:
+        dict_names = ['DICT_APRILTAG_36h11']
+    else:
+        dict_names = all_dict_names
+    if target_id is not None and not acquire_target and not allow_dictionary_fallback and preferred in all_dict_names:
+        dict_names = [preferred]
     detections: list[dict[str, Any]] = []
     for name in dict_names:
         if not hasattr(aruco, name):
@@ -698,6 +710,7 @@ def _detect_apriltags_from_frame(
         'detections': detections,
         'tag': tag,
         'acquired_tag_id': tag['id'] if acquire_target and tag else None,
+        'acquired_tag_dictionary': tag['dictionary'] if acquire_target and tag else None,
     }
 
 
@@ -742,6 +755,8 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
     stream_url = str(payload.get('stream_url') or settings.get('camera_stream_url') or '').strip()
     acquire_target = bool(payload.get('acquire_target', False))
     target_id_raw = payload.get('target_id', None)
+    target_dictionary = str(payload.get('target_dictionary') or '').strip()
+    missed_frames = int(payload.get('missed_frames') or 0)
     target_id: int | None = None
     if target_id_raw not in (None, '', 'null'):
         try:
@@ -760,8 +775,10 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
         detection = _detect_apriltags_from_frame(
             frame,
             target_id=target_id,
+            target_dictionary=target_dictionary,
             acquire_target=acquire_target,
             max_detect_width=max_detect_width,
+            allow_dictionary_fallback=acquire_target or missed_frames >= 2,
         )
         detect_ms = (time.perf_counter() - started) * 1000
         command = _compute_tag_tracking_command(detection['tag'], detection['width'], detection['height'], desired_size_ratio, max_linear, max_angular)

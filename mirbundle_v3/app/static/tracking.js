@@ -56,6 +56,7 @@
   let lastUiAt = 0;
   let lastOverlayAt = 0;
   let lastBackendFrameId = 0;
+  let selectedTagDictionary = '';
   let pid = resetPid();
 
   function resetPid() {
@@ -447,9 +448,10 @@
     pid.visibleFrames += 1;
     pid.missedFrames = 0;
     const cmd = data.command || {};
+    if (tag.dictionary) selectedTagDictionary = tag.dictionary;
     if (renderUi) {
       if (selectedTagId !== null) setText(tagIdEl, selectedTagId);
-      setText(targetStateEl, `rilevato AprilTag ID ${tag.id}`);
+      setText(targetStateEl, `rilevato AprilTag ID ${tag.id}${tag.dictionary ? ` | ${tag.dictionary}` : ''}`);
       setText(offsetEl, cmd.offset_x ?? '-');
       setText(ratioEl, cmd.size_ratio ?? '-');
       const perf = data.perf || {};
@@ -468,6 +470,8 @@
       snapshot_url: streamIsVideo ? '' : (snapshotUrlInput?.value || '').trim(),
       acquire_target: !!acquireTarget,
       target_id: selectedTagId,
+      target_dictionary: selectedTagDictionary,
+      missed_frames: pid.missedFrames,
       desired_size_ratio: number(desiredRatioInput, 18) / 100,
       max_linear: number(maxLinearInput, 0.18),
       max_angular: number(maxAngularInput, 0.45),
@@ -493,6 +497,7 @@
       try { data = JSON.parse(text); } catch (_) { data = { ok: false, error: text || `HTTP ${res.status}` }; }
       if (data.ok && data.acquired_tag_id !== undefined && data.acquired_tag_id !== null) {
         selectedTagId = data.acquired_tag_id;
+        selectedTagDictionary = data.acquired_tag_dictionary || data.tag?.dictionary || selectedTagDictionary;
         setText(tagIdEl, selectedTagId);
       }
       if (data.perf?.frame_id) lastBackendFrameId = Number(data.perf.frame_id) || lastBackendFrameId;
@@ -532,6 +537,7 @@
     followEnabled = false;
     window.clearTimeout(followTimer);
     selectedTagId = null;
+    selectedTagDictionary = '';
     lastBackendFrameId = 0;
     pid = resetPid();
     setText(tagIdEl, '-');
@@ -589,6 +595,7 @@
     window.clearTimeout(followTimer);
     stopRobot();
     selectedTagId = null;
+    selectedTagDictionary = '';
     pid = resetPid();
     busy = false;
     advertised = false;
@@ -630,6 +637,7 @@
 
   clearBtn?.addEventListener('click', () => {
     selectedTagId = null;
+    selectedTagDictionary = '';
     pid = resetPid();
     setText(tagIdEl, '-');
     setText(targetStateEl, 'target rimosso');

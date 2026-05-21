@@ -54,9 +54,14 @@
       <span class="status-pill {{ 'danger' if is_warning_state else 'success' }}">{{ state_text }}</span>
       <span class="status-pill {{ 'danger' if is_low_battery else '' }}">Batteria {{ battery_display }}%</span>
     </div>
-    <div class="battery-ring {{ 'danger' if is_low_battery else '' }}" style="--battery: {{ battery_display if battery_display != '-' else 0 }}%">
-      <span>{{ battery_display }}</span>
-      <small>%</small>
+    <div class="battery-bar {{ 'danger' if is_low_battery else '' }}" style="--battery: {{ battery_display if battery_display != '-' else 0 }}%">
+      <div class="battery-bar-head">
+        <span>Batteria</span>
+        <strong>{{ battery_display }}%</strong>
+      </div>
+      <div class="battery-track" aria-hidden="true">
+        <span></span>
+      </div>
     </div>
     <dl class="hud-metrics">
       <div><dt>State</dt><dd class="{{ 'text-danger' if is_warning_state else '' }}">{{ state_text }}</dd></div>
