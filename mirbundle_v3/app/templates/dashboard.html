@@ -1,7 +1,30 @@
 {% extends 'base.html' %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-<h1>Dashboard robot</h1>
+{% set battery_raw = status.battery_percentage if status and status.battery_percentage is not none else none %}
+{% set battery_value = battery_raw|float if battery_raw is not none else none %}
+{% set battery_display = battery_value|round(0)|int if battery_value is not none else '-' %}
+{% set state_text = status.state_text if status and status.state_text else '-' %}
+{% set state_l = state_text|string|lower %}
+{% set mode_text = (status.mode_text or status.mode_id) if status else '-' %}
+{% set is_low_battery = battery_value is not none and battery_value <= 20 %}
+{% set is_warning_state = 'error' in state_l or 'emergency' in state_l or 'protective' in state_l or 'abort' in state_l or 'paused' in state_l or 'pause' in state_l %}
+
+<div class="dashboard-heading">
+  <p class="eyebrow">Robot operations</p>
+  <h1>Dashboard robot</h1>
+  <p>Controllo rapido MiR, stato live e tracking vision in un cockpit pulito.</p>
+</div>
+
+{% if is_low_battery or is_warning_state %}
+<section class="system-warning" role="status" aria-live="polite">
+  <strong>Warning operativo</strong>
+  <span>
+    {% if is_warning_state %}Stato robot: {{ state_text }}.{% endif %}
+    {% if is_low_battery %} Batteria bassa: {{ battery_display }}%.{% endif %}
+  </span>
+</section>
+{% endif %}
 
 <section class="robot-hero">
   <div class="robot-viewport">
@@ -19,9 +42,7 @@
       aria-label="Modello 3D MiR 100"
     >
       <div class="robot-fallback" slot="poster">Caricamento modello MiR 100</div>
-      <div class="robot-fallback">Viewer 3D non caricato. Apri il modello: <a href="/static/models/mir100-step.glb">mir100-step.glb</a></div>
     </model-viewer>
-    <div class="robot-model-status" id="mirModelStatus">Inizializzazione viewer 3D...</div>
     <div class="hud-frame" aria-hidden="true">
       <span></span><span></span><span></span><span></span>
     </div>
@@ -29,38 +50,48 @@
   <div class="robot-hud">
     <p class="eyebrow">Live robot console</p>
     <h2>{{ status.robot_name or 'MiR 100' }}</h2>
+    <div class="status-stack">
+      <span class="status-pill {{ 'danger' if is_warning_state else 'success' }}">{{ state_text }}</span>
+      <span class="status-pill {{ 'danger' if is_low_battery else '' }}">Battery {{ battery_display }}%</span>
+    </div>
+    <div class="battery-ring {{ 'danger' if is_low_battery else '' }}" style="--battery: {{ battery_display if battery_display != '-' else 0 }}%">
+      <span>{{ battery_display }}</span>
+      <small>%</small>
+    </div>
     <dl class="hud-metrics">
-      <div><dt>State</dt><dd>{{ status.state_text or '-' }}</dd></div>
-      <div><dt>Battery</dt><dd>{{ status.battery_percentage or '-' }}%</dd></div>
-      <div><dt>Mode</dt><dd>{{ status.mode_text or status.mode_id or '-' }}</dd></div>
+      <div><dt>State</dt><dd class="{{ 'text-danger' if is_warning_state else '' }}">{{ state_text }}</dd></div>
+      <div><dt>Battery</dt><dd class="{{ 'text-danger' if is_low_battery else '' }}">{{ battery_display }}%</dd></div>
+      <div><dt>Mode</dt><dd>{{ mode_text or '-' }}</dd></div>
     </dl>
   </div>
 </section>
 
-<div class="grid two">
+<div class="dashboard-actions">
+  <a class="btn" href="/">Aggiorna</a>
+  <form method="post" action="/robot/ready">
+    <button class="btn success" type="submit">Ready / Resume</button>
+  </form>
+  <form method="post" action="/robot/clear-errors">
+    <button class="btn danger" type="submit">Reset errori</button>
+  </form>
+  <a class="btn ghost" href="/tracking">Tracking</a>
+</div>
+
+<div class="grid two dashboard-grid">
   <section class="card">
     <h2>Stato</h2>
     {% if status %}
     <dl class="kv">
       <div><dt>Robot</dt><dd>{{ status.robot_name or '-' }}</dd></div>
-      <div><dt>State</dt><dd><strong>{{ status.state_text or '-' }}</strong></dd></div>
-      <div><dt>Battery</dt><dd>{{ status.battery_percentage or '-' }}%</dd></div>
+      <div><dt>State</dt><dd><strong class="{{ 'text-danger' if is_warning_state else '' }}">{{ state_text }}</strong></dd></div>
+      <div><dt>Battery</dt><dd class="{{ 'text-danger' if is_low_battery else '' }}">{{ battery_display }}%</dd></div>
       <div><dt>Velocity</dt><dd>{{ status.velocity or '-' }}</dd></div>
-      <div><dt>Mode</dt><dd>{{ status.mode_text or status.mode_id or '-' }}</dd></div>
+      <div><dt>Mode</dt><dd>{{ mode_text or '-' }}</dd></div>
       <div><dt>Mappa</dt><dd>{{ status.map_text or status.map_id or '-' }}</dd></div>
     </dl>
     {% else %}
       <p>Nessun dato disponibile.</p>
     {% endif %}
-    <div class="actions three">
-      <a class="btn" href="/">Aggiorna</a>
-      <form method="post" action="/robot/ready">
-        <button class="btn success" type="submit">Metti Ready / Resume</button>
-      </form>
-      <form method="post" action="/robot/clear-errors">
-        <button class="btn warn" type="submit">Reset errori</button>
-      </form>
-    </div>
     <p class="note">Usa <strong>Metti Ready / Resume</strong> quando il MiR resta in Pause e non parte con le missioni.</p>
   </section>
 
@@ -83,41 +114,17 @@
   </section>
 </div>
 
-<section class="card">
-  <h2>Funzioni principali progetto finale</h2>
-  <div class="grid two">
-    <div>
+<section class="project-strip">
+  <article>
+    <span>01</span>
       <h3>1. Controllo MiR</h3>
       <p>Dashboard, stato robot, Ready/Resume, reset errori, missioni e coda.</p>
-    </div>
-    <div>
+  </article>
+  <article>
+    <span>02</span>
       <h3>2. Tracking telefono</h3>
       <p>Video da telefono usato come camera IP e selezione AprilTag dalla pagina Tracking.</p>
-    </div>
-  </div>
+  </article>
 </section>
 <script type="module" src="/static/vendor/model-viewer.min.js?v=4.1.0"></script>
-<script>
-  window.addEventListener('DOMContentLoaded', () => {
-    const viewer = document.getElementById('mirModelViewer');
-    const status = document.getElementById('mirModelStatus');
-    if (!viewer || !status) return;
-    const failTimer = window.setTimeout(() => {
-      if (!customElements.get('model-viewer')) {
-        status.textContent = 'Viewer 3D non disponibile: libreria model-viewer non caricata.';
-        status.classList.add('error');
-      }
-    }, 2400);
-    viewer.addEventListener('load', () => {
-      window.clearTimeout(failTimer);
-      status.textContent = 'Modello 3D caricato';
-      status.classList.remove('error');
-    });
-    viewer.addEventListener('error', () => {
-      window.clearTimeout(failTimer);
-      status.textContent = 'Errore caricamento GLB';
-      status.classList.add('error');
-    });
-  });
-</script>
 {% endblock %}

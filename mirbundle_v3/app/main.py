@@ -12,7 +12,7 @@ import httpx
 from fastapi import Body
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -30,8 +30,8 @@ DEFAULT_TRACKING_SETTINGS: dict[str, Any] = {
     'targetSize': '32',
     'maxLinear': '1.50',
     'maxAngular': '1.50',
-    'pidHz': '30',
-    'detectWidth': '640',
+    'pidHz': '45',
+    'detectWidth': '560',
 }
 
 
@@ -353,6 +353,7 @@ class _StreamFrameCache:
         self.thread: threading.Thread | None = None
         self.running = False
         self.jpeg: bytes | None = None
+        self.frame = None
         self.last_frame_ts = 0.0
         self.frame_id = 0
         self.last_error = ''
@@ -371,15 +372,34 @@ class _StreamFrameCache:
             time.sleep(0.03)
         raise RuntimeError(last_error or f'Nessun frame disponibile dallo stream: {url}')
 
+    def get_frame(self, url: str, wait_seconds: float = 2.0, min_frame_id: int = 0):
+        url = (url or '').strip()
+        if not url:
+            raise RuntimeError('Stream URL camera non configurato.')
+        self._ensure_running(url)
+        deadline = time.time() + wait_seconds
+        fallback = None
+        while time.time() < deadline:
+            with self.lock:
+                if self.url == url and self.frame is not None and self.frame_id > min_frame_id:
+                    return self.frame.copy()
+                fallback = self.frame.copy() if self.url == url and self.frame is not None else None
+                last_error = self.last_error
+            time.sleep(0.004)
+        if fallback is not None:
+            return fallback
+        raise RuntimeError(last_error or f'Nessun frame disponibile dallo stream: {url}')
+
     def _ensure_running(self, url: str) -> None:
         with self.lock:
             stale = bool(self.running and self.url == url and self.last_frame_ts and time.time() - self.last_frame_ts > 3.0)
-            failed = bool(self.running and self.url == url and not self.jpeg and self.last_error)
+            failed = bool(self.running and self.url == url and self.frame is None and self.last_error)
             if self.running and self.url == url and not stale and not failed:
                 return
             self._stop_locked()
             self.url = url
             self.jpeg = None
+            self.frame = None
             self.last_error = ''
             self.last_frame_ts = 0.0
             self.running = True
@@ -401,6 +421,7 @@ class _StreamFrameCache:
             self._stop_locked()
             self.url = ''
             self.jpeg = None
+            self.frame = None
             self.last_frame_ts = 0.0
             self.frame_id = 0
             self.last_error = ''
@@ -414,6 +435,8 @@ class _StreamFrameCache:
         try:
             if hasattr(cv2, 'CAP_PROP_BUFFERSIZE'):
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            if hasattr(cv2, 'CAP_PROP_FPS'):
+                cap.set(cv2.CAP_PROP_FPS, 60)
             if not cap.isOpened():
                 with self.lock:
                     self.last_error = f'Stream video non raggiungibile: {url}'
@@ -428,14 +451,13 @@ class _StreamFrameCache:
                         self.last_error = f'Impossibile leggere un frame dallo stream: {url}'
                     time.sleep(0.08)
                     continue
-                encoded, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
-                if encoded:
-                    with self.lock:
-                        if self.running and self.url == url:
-                            self.jpeg = buffer.tobytes()
-                            self.last_frame_ts = time.time()
-                            self.frame_id += 1
-                            self.last_error = ''
+                with self.lock:
+                    if self.running and self.url == url:
+                        self.frame = frame
+                        self.jpeg = None
+                        self.last_frame_ts = time.time()
+                        self.frame_id += 1
+                        self.last_error = ''
         finally:
             with self.lock:
                 if self.capture is cap:
@@ -467,6 +489,22 @@ def _get_apriltag_detector(cv2, dictionary_name: str):
     dictionary = aruco.getPredefinedDictionary(getattr(aruco, dictionary_name))
     try:
         params = aruco.DetectorParameters()
+        if hasattr(params, 'cornerRefinementMethod') and hasattr(aruco, 'CORNER_REFINE_NONE'):
+            params.cornerRefinementMethod = aruco.CORNER_REFINE_NONE
+        if hasattr(params, 'adaptiveThreshWinSizeMin'):
+            params.adaptiveThreshWinSizeMin = 3
+        if hasattr(params, 'adaptiveThreshWinSizeMax'):
+            params.adaptiveThreshWinSizeMax = 23
+        if hasattr(params, 'adaptiveThreshWinSizeStep'):
+            params.adaptiveThreshWinSizeStep = 10
+        if hasattr(params, 'minMarkerPerimeterRate'):
+            params.minMarkerPerimeterRate = 0.018
+        if hasattr(params, 'maxErroneousBitsInBorderRate'):
+            params.maxErroneousBitsInBorderRate = 0.35
+        if hasattr(params, 'aprilTagQuadDecimate'):
+            params.aprilTagQuadDecimate = 1.0
+        if hasattr(params, 'aprilTagQuadSigma'):
+            params.aprilTagQuadSigma = 0.0
         detector = ('new', aruco.ArucoDetector(dictionary, params), None)
     except Exception:
         params = aruco.DetectorParameters_create()
@@ -476,13 +514,45 @@ def _get_apriltag_detector(cv2, dictionary_name: str):
 
 
 def _capture_frame_from_stream(url: str) -> bytes:
-    return _STREAM_FRAME_CACHE.get_jpeg(url)
+    frame = _STREAM_FRAME_CACHE.get_frame(url)
+    cv2, _ = _load_cv2()
+    encoded, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 72])
+    if not encoded:
+        raise RuntimeError('Impossibile codificare frame camera.')
+    return buffer.tobytes()
+
+
+def _capture_raw_frame_from_stream(url: str, min_frame_id: int = 0):
+    return _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.08, min_frame_id=min_frame_id)
 
 
 def _stream_frame_meta() -> dict[str, Any]:
     with _STREAM_FRAME_CACHE.lock:
         age_ms = (time.time() - _STREAM_FRAME_CACHE.last_frame_ts) * 1000 if _STREAM_FRAME_CACHE.last_frame_ts else None
         return {'frame_age_ms': round(age_ms, 1) if age_ms is not None else None, 'frame_id': _STREAM_FRAME_CACHE.frame_id}
+
+
+def _camera_stream_generator(url: str, fps: int = 30):
+    cv2, _ = _load_cv2()
+    frame_delay = 1.0 / max(1, min(60, fps))
+    last_id = 0
+    while True:
+        started = time.perf_counter()
+        frame = _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=1.0, min_frame_id=last_id)
+        with _STREAM_FRAME_CACHE.lock:
+            last_id = _STREAM_FRAME_CACHE.frame_id
+        encoded, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 68])
+        if encoded:
+            yield (
+                b'--frame\r\n'
+                b'Content-Type: image/jpeg\r\n'
+                b'Cache-Control: no-store\r\n\r\n' +
+                buffer.tobytes() +
+                b'\r\n'
+            )
+        elapsed = time.perf_counter() - started
+        if elapsed < frame_delay:
+            time.sleep(frame_delay - elapsed)
 
 
 async def _download_snapshot(url: str, stream_url: str = '') -> bytes:
@@ -521,17 +591,31 @@ async def _download_snapshot(url: str, stream_url: str = '') -> bytes:
     raise RuntimeError('Snapshot camera non raggiungibile. Provati: ' + ' | '.join(errors))
 
 
-def _detect_apriltags_from_jpeg(
-    image_bytes: bytes,
+async def _load_tracking_frame(snapshot_url: str, stream_url: str = '', min_frame_id: int = 0):
+    stream = stream_url.strip()
+    snapshot = snapshot_url.strip()
+    if stream and _is_video_stream_url(stream):
+        return await asyncio.to_thread(_capture_raw_frame_from_stream, stream, min_frame_id)
+    if snapshot and _is_video_stream_url(snapshot):
+        return await asyncio.to_thread(_capture_raw_frame_from_stream, snapshot, min_frame_id)
+    image = await _download_snapshot(snapshot, stream)
+    cv2, np = _load_cv2()
+    arr = np.frombuffer(image, dtype=np.uint8)
+    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if frame is None:
+        raise RuntimeError('Impossibile decodificare snapshot camera.')
+    return frame
+
+
+def _detect_apriltags_from_frame(
+    frame,
     target_id: int | None = None,
     acquire_target: bool = False,
     max_detect_width: int = 640,
 ) -> dict[str, Any]:
-    cv2, np = _load_cv2()
-    arr = np.frombuffer(image_bytes, dtype=np.uint8)
-    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if frame is None:
-        raise RuntimeError('Impossibile decodificare snapshot camera.')
+        raise RuntimeError('Frame camera non disponibile.')
+    cv2, _ = _load_cv2()
     height, width = frame.shape[:2]
     detect_frame = frame
     scale = 1.0
@@ -545,8 +629,8 @@ def _detect_apriltags_from_jpeg(
         raise RuntimeError('Modulo AprilTag non disponibile. Installa: pip install opencv-contrib-python-headless')
 
     aruco = cv2.aruco
-    # Prova prima AprilTag 36h11, poi fallback ad altri dizionari AprilTag comuni.
-    dict_names = ['DICT_APRILTAG_36h11', 'DICT_APRILTAG_25h9', 'DICT_APRILTAG_16h5']
+    # In follow teniamo solo 36h11: provare piu' dizionari triplica la latenza.
+    dict_names = ['DICT_APRILTAG_36h11'] if target_id is not None and not acquire_target else ['DICT_APRILTAG_36h11', 'DICT_APRILTAG_25h9', 'DICT_APRILTAG_16h5']
     detections: list[dict[str, Any]] = []
     for name in dict_names:
         if not hasattr(aruco, name):
@@ -668,12 +752,13 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
     max_linear = float(payload.get('max_linear') or 0.12)
     max_angular = float(payload.get('max_angular') or 0.35)
     max_detect_width = int(payload.get('max_detect_width') or 640)
+    last_frame_id = int(payload.get('last_frame_id') or 0)
     result: dict[str, Any] = {'ok': False, 'target_id': target_id}
     try:
         started = time.perf_counter()
-        image = await _download_snapshot(snapshot_url, stream_url)
-        detection = _detect_apriltags_from_jpeg(
-            image,
+        frame = await _load_tracking_frame(snapshot_url, stream_url, last_frame_id)
+        detection = _detect_apriltags_from_frame(
+            frame,
             target_id=target_id,
             acquire_target=acquire_target,
             max_detect_width=max_detect_width,
@@ -684,6 +769,15 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
         return result
     except Exception as exc:
         return {'ok': False, 'error': str(exc), 'command': {'linear': 0.0, 'angular': 0.0, 'suggestion': 'errore: stop'}}
+
+
+@app.get('/api/tracking/camera-stream')
+def tracking_camera_stream(url: str, fps: int = 30):
+    return StreamingResponse(
+        _camera_stream_generator(url, fps),
+        media_type='multipart/x-mixed-replace; boundary=frame',
+        headers={'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'},
+    )
 
 
 @app.post('/api/tracking/stop')

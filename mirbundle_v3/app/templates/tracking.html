@@ -44,14 +44,14 @@
         </label>
       </div>
       <div class="row wrap">
-        <button class="btn tracking-preset active" data-hz="30" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">30 Hz</button>
-        <button class="btn tracking-preset" data-hz="40" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">40 Hz</button>
-        <button class="btn tracking-preset" data-hz="50" data-detect-width="720" data-linear="1.50" data-angular="1.50" type="button">50 Hz</button>
+        <button class="btn tracking-preset active" data-hz="30" data-detect-width="480" data-linear="1.50" data-angular="1.50" type="button">30 Hz</button>
+        <button class="btn tracking-preset" data-hz="45" data-detect-width="560" data-linear="1.50" data-angular="1.50" type="button">45 Hz</button>
+        <button class="btn tracking-preset" data-hz="60" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">60 Hz</button>
       </div>
       <button class="btn success" id="saveTrackingSettingsBtn" type="button">Salva valori tracking</button>
       <p class="note">Per 1080p, con AprilTag fisico da circa 16-18 cm, 1 metro di distanza tende a stare intorno al 16-22% del frame. Se il tag e' da 12 cm prova 12-16%; se e' da 20 cm prova 20-26%.</p>
-      <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '30' }}">
-      <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '640' }}">
+      <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '45' }}">
+      <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '560' }}">
       <input id="trackingPidLinearKp" type="hidden" value="7.50">
       <input id="trackingPidLinearKi" type="hidden" value="0.00">
       <input id="trackingPidLinearKd" type="hidden" value="0.45">
@@ -66,6 +66,8 @@
       <div><dt>AprilTag ID</dt><dd id="trackingTagId">-</dd></div>
       <div><dt>Offset X</dt><dd id="trackingOffset">-</dd></div>
       <div><dt>Dimensione frame</dt><dd id="trackingRatio">-</dd></div>
+      <div><dt>Precisione</dt><dd id="trackingPrecision">-</dd></div>
+      <div><dt>Curva</dt><dd id="trackingCurveMode">spenta</dd></div>
       <div><dt>Performance</dt><dd id="trackingPerf">-</dd></div>
       <div><dt>PID</dt><dd id="trackingCommand">linear=0 angular=0</dd></div>
       <div><dt>Follow</dt><dd id="trackingFollowState">spento</dd></div>
@@ -73,5 +75,5 @@
   </section>
 </div>
 
-<script src="/static/tracking.js?v=pid-rosbridge-11"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-13"></script>
 {% endblock %}

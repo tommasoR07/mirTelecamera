@@ -20,6 +20,8 @@
   const tagIdEl = $('trackingTagId');
   const offsetEl = $('trackingOffset');
   const ratioEl = $('trackingRatio');
+  const precisionEl = $('trackingPrecision');
+  const curveModeEl = $('trackingCurveMode');
   const perfEl = $('trackingPerf');
   const commandEl = $('trackingCommand');
   const followStateEl = $('trackingFollowState');
@@ -38,6 +40,10 @@
     angularKd: $('trackingPidAngularKd'),
   };
   const STORAGE_KEY = 'mir.trackingPid.v1';
+  if (streamImg) {
+    streamImg.decoding = 'async';
+    streamImg.loading = 'eager';
+  }
 
   let selectedTagId = null;
   let followEnabled = false;
@@ -47,6 +53,9 @@
   let advertised = false;
   let joystickToken = '';
   let lastSeenAt = 0;
+  let lastUiAt = 0;
+  let lastOverlayAt = 0;
+  let lastBackendFrameId = 0;
   let pid = resetPid();
 
   function resetPid() {
@@ -85,8 +94,8 @@
       targetSize: desiredRatioInput?.value || '32',
       maxLinear: maxLinearInput?.value || '1.50',
       maxAngular: maxAngularInput?.value || '1.50',
-      pidHz: pidHzInput?.value || '30',
-      detectWidth: detectWidthInput?.value || '640',
+      pidHz: pidHzInput?.value || '45',
+      detectWidth: detectWidthInput?.value || '560',
     };
   }
 
@@ -285,6 +294,9 @@
   }
 
   function drawTag(tag) {
+    const now = performance.now();
+    if (now - lastOverlayAt < 45) return;
+    lastOverlayAt = now;
     if (!ensureCanvas()) return;
     drawGuide();
     if (!tag) return;
@@ -377,26 +389,49 @@
       ? maxAngular
       : maxAngular * clamp((Math.abs(offsetError) - offsetDeadband) / angularWindow, 0, 1);
     angular = clamp(angular, -nearCenterLimit, nearCenterLimit);
+    setText(curveModeEl, pid.curveInPlace ? 'attiva' : 'spenta');
     return { linear, angular, mode: pid.curveInPlace ? 'curva sul posto' : '' };
   }
 
-  function updateStats(data) {
+  function detectionPrecision(tag, cmd, perf) {
+    const sizeRatio = Number(cmd.size_ratio);
+    const offset = Math.abs(Number(cmd.offset_x));
+    const detectMs = Number(perf.detect_ms);
+    let score = 50;
+    if (Number.isFinite(sizeRatio)) score += clamp(sizeRatio / 0.32, 0, 1) * 25;
+    if (Number.isFinite(offset)) score += (1 - clamp(offset, 0, 1)) * 15;
+    if (Number.isFinite(detectMs)) score += (1 - clamp(detectMs / 45, 0, 1)) * 10;
+    if (tag?.corners?.length === 4) score += 5;
+    score = Math.round(clamp(score, 0, 100));
+    const label = score >= 82 ? 'alta' : score >= 62 ? 'media' : 'bassa';
+    return `${label} (${score}%)`;
+  }
+
+  function updateStats(data, renderUi = true) {
     if (!data || !data.ok) {
       const msg = data?.error || 'errore rilevamento AprilTag';
-      setText(targetStateEl, msg);
-      setText(offsetEl, '-');
-      setText(ratioEl, '-');
-      setText(perfEl, '-');
-      drawGuide();
+      if (renderUi) {
+        setText(targetStateEl, msg);
+        setText(offsetEl, '-');
+        setText(ratioEl, '-');
+        setText(precisionEl, '-');
+        setText(curveModeEl, 'spenta');
+        setText(perfEl, '-');
+        drawGuide();
+      }
       pid.missedFrames += 1;
       pid.visibleFrames = 0;
       if (followEnabled) stopRobot();
       return null;
     }
     const tag = data.tag || null;
-    drawTag(tag);
+    if (renderUi) drawTag(tag);
     if (!tag) {
-      setText(targetStateEl, selectedTagId === null ? 'nessun AprilTag rilevato' : `AprilTag ID ${selectedTagId} non visibile`);
+      if (renderUi) {
+        setText(targetStateEl, selectedTagId === null ? 'nessun AprilTag rilevato' : `AprilTag ID ${selectedTagId} non visibile`);
+        setText(precisionEl, 'perso');
+        setText(curveModeEl, 'spenta');
+      }
       pid.missedFrames += 1;
       pid.visibleFrames = 0;
       if (followEnabled) stopRobot();
@@ -405,14 +440,17 @@
     lastSeenAt = performance.now();
     pid.visibleFrames += 1;
     pid.missedFrames = 0;
-    if (selectedTagId !== null) setText(tagIdEl, selectedTagId);
     const cmd = data.command || {};
-    setText(targetStateEl, `rilevato AprilTag ID ${tag.id}`);
-    setText(offsetEl, cmd.offset_x ?? '-');
-    setText(ratioEl, cmd.size_ratio ?? '-');
-    const perf = data.perf || {};
-    const actualHz = pid.lastLoopMs ? `${(1000 / pid.lastLoopMs).toFixed(1)} Hz` : '-';
-    setText(perfEl, `det ${perf.detect_ms ?? '-'} ms | frame ${perf.frame_age_ms ?? '-'} ms | loop ${actualHz}`);
+    if (renderUi) {
+      if (selectedTagId !== null) setText(tagIdEl, selectedTagId);
+      setText(targetStateEl, `rilevato AprilTag ID ${tag.id}`);
+      setText(offsetEl, cmd.offset_x ?? '-');
+      setText(ratioEl, cmd.size_ratio ?? '-');
+      const perf = data.perf || {};
+      const actualHz = pid.lastLoopMs ? `${(1000 / pid.lastLoopMs).toFixed(1)} Hz` : '-';
+      setText(precisionEl, detectionPrecision(tag, cmd, perf));
+      setText(perfEl, `det ${perf.detect_ms ?? '-'} ms | frame ${perf.frame_age_ms ?? '-'} ms | loop ${actualHz}`);
+    }
     return cmd;
   }
 
@@ -428,12 +466,16 @@
       max_linear: number(maxLinearInput, 0.18),
       max_angular: number(maxAngularInput, 0.45),
       max_detect_width: Math.max(320, Math.min(1080, number(detectWidthInput, 640))),
+      last_frame_id: lastBackendFrameId,
     };
   }
 
   async function tagStep(acquireTarget) {
     if (busy) return null;
     busy = true;
+    const now = performance.now();
+    const renderUi = acquireTarget || now - lastUiAt > 66;
+    if (renderUi) lastUiAt = now;
     try {
       const res = await fetch('/api/tracking/apriltag-step', {
         method: 'POST',
@@ -447,7 +489,8 @@
         selectedTagId = data.acquired_tag_id;
         setText(tagIdEl, selectedTagId);
       }
-      return updateStats(data);
+      if (data.perf?.frame_id) lastBackendFrameId = Number(data.perf.frame_id) || lastBackendFrameId;
+      return updateStats(data, renderUi);
     } catch (err) {
       setText(targetStateEl, `errore chiamata backend: ${err}`);
       drawGuide();
@@ -464,17 +507,18 @@
       return;
     }
     if (/^(rtsp|rtmp):\/\//i.test(url)) {
-      setText(streamStateEl, 'stream usato dal backend; anteprima browser non disponibile');
-      drawGuide();
+      streamImg.src = `/api/tracking/camera-stream?fps=30&url=${encodeURIComponent(url)}`;
+      setText(streamStateEl, 'stream backend live connesso');
+      setTimeout(drawGuide, 600);
       return;
     }
     const isMjpeg = /\/(stream|mjpeg|mjpg|video|video_feed)\b/i.test(url) || /[?&]action=stream/i.test(url);
-    streamImg.onerror = () => setText(streamStateEl, isMjpeg ? 'errore stream MJPEG' : 'errore snapshot');
+    streamImg.onerror = () => setText(streamStateEl, isMjpeg ? 'errore stream camera' : 'errore snapshot');
     streamImg.onload = () => {
-      setText(streamStateEl, isMjpeg ? 'stream MJPEG live connesso' : 'snapshot connesso');
+      setText(streamStateEl, isMjpeg ? 'stream backend live connesso' : 'snapshot connesso');
       drawGuide();
     };
-    streamImg.src = isMjpeg ? url : `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    streamImg.src = isMjpeg ? `/api/tracking/camera-stream?fps=30&url=${encodeURIComponent(url)}` : `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
     setTimeout(drawGuide, 600);
   }
 
@@ -482,6 +526,7 @@
     followEnabled = false;
     window.clearTimeout(followTimer);
     selectedTagId = null;
+    lastBackendFrameId = 0;
     pid = resetPid();
     setText(tagIdEl, '-');
     setText(followStateEl, 'riconoscimento AprilTag...');
@@ -517,8 +562,8 @@
       publishVelocity(out.linear, out.angular, out.mode);
     }
     const elapsed = performance.now() - started;
-    const targetMs = 1000 / Math.max(1, Math.min(60, number(pidHzInput, 30)));
-    followTimer = window.setTimeout(followLoop, Math.max(8, targetMs - elapsed));
+    const targetMs = 1000 / Math.max(1, Math.min(90, number(pidHzInput, 45)));
+    followTimer = window.setTimeout(followLoop, Math.max(2, targetMs - elapsed));
   }
 
   function stopFollow() {
@@ -537,6 +582,7 @@
     busy = false;
     advertised = false;
     joystickToken = '';
+    lastBackendFrameId = 0;
     if (socket) {
       try { socket.close(); } catch (_) {}
     }

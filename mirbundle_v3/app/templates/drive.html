@@ -1,6 +1,9 @@
 {% extends 'base.html' %}
 {% block title %}Drive{% endblock %}
 {% block content %}
+{% set battery_raw = status.battery_percentage if status and status.battery_percentage is not none else none %}
+{% set battery_value = battery_raw|float if battery_raw is not none else none %}
+{% set battery_display = battery_value|round(0)|int if battery_value is not none else '-' %}
 <h1>Controllo movimento manuale</h1>
 <div class="grid two">
   <section class="card">
@@ -9,7 +12,7 @@
     <dl class="kv">
       <div><dt>Robot</dt><dd>{{ status.robot_name or '-' }}</dd></div>
       <div><dt>State</dt><dd>{{ status.state_text or '-' }}</dd></div>
-      <div><dt>Battery</dt><dd>{{ status.battery_percentage or '-' }}%</dd></div>
+      <div><dt>Battery</dt><dd>{{ battery_display }}%</dd></div>
       <div><dt>Velocity</dt><dd>{{ status.velocity or '-' }}</dd></div>
       <div><dt>Mode</dt><dd>{{ status.mode_text or status.mode_id or '-' }}</dd></div>
     </dl>
