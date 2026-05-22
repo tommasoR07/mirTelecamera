@@ -2,34 +2,33 @@
 {% block title %}Mappe / Localizzazione{% endblock %}
 {% block content %}
 <div class="dashboard-heading">
-  <p class="eyebrow">NAVIGATION MODULE // SPATIAL INDEX</p>
-  <h1>Mappe e localizzazione</h1>
-  <p>Load available maps, assign localization anchors, and coordinate absolute coordinates when tracking alignment is lost.</p>
+  <h1>Mappe e Localizzazione</h1>
+  <p>Carica le mappe disponibili sul robot, definisci i punti di localizzazione e gestisci l'allineamento spaziale del MiR-100.</p>
 </div>
 
 <div class="grid two">
   <section class="card">
-    <h2>1. SPATIAL MAP SELECTOR</h2>
+    <h2>1. Selettore Mappa Spaziale</h2>
     <form method="get" action="/maps" class="stack">
-      <label>Active Spatial Database
+      <label>Mappa Attiva nel Sistema
         <select name="map_id" class="mono">
           {% for item in maps %}
           <option value="{{ item.guid }}" {% if selected_map == item.guid %}selected{% endif %}>{{ item.name or item.guid }}</option>
           {% endfor %}
         </select>
       </label>
-      <button class="btn" type="submit" style="width: 100%;">LOAD NAV ANCHORS</button>
+      <button class="btn" type="submit" style="width: 100%;">Carica Punti di Riferimento</button>
     </form>
   </section>
 
   <section class="card">
-    <h2>2. RE-LOCALIZATION ANCHORS</h2>
-    <p class="note">If the robot loses its global coordinates, place it physically close to a known anchor point, select it, and trigger <strong>LOCALIZE HERE</strong>.</p>
+    <h2>2. Punti di Rilocalizzazione</h2>
+    <p class="note">Se il robot perde la propria posizione globale sulla mappa, posizionalo fisicamente vicino ad un punto noto, selezionalo qui sotto e avvia la procedura di rilocalizzazione.</p>
     
     <form method="post" action="/maps/localize" class="stack" style="margin-top: 14px;">
       <input type="hidden" name="map_id" value="{{ selected_map }}">
       
-      <label>Reference Anchor Point
+      <label>Punto di Riferimento (Anchor)
         <select name="position_id" required class="mono">
           {% for item in positions %}
           <option value="{{ item.guid }}">{{ item.name or item.guid }}</option>
@@ -38,8 +37,8 @@
       </label>
       
       <div class="row wrap" style="gap: 8px;">
-        <button class="btn success" type="submit">LOCALIZE HERE</button>
-        <button class="btn" type="submit" formaction="/maps/set-active">ACTIVATE SPATIAL MAP</button>
+        <button class="btn success" type="submit">Localizza Qui</button>
+        <button class="btn" type="submit" formaction="/maps/set-active">Attiva Mappa Spaziale</button>
       </div>
     </form>
   </section>
@@ -47,25 +46,25 @@
 
 <div class="grid two" style="margin-top: 20px;">
   <section class="card">
-    <h2>SPATIAL ANCHORS</h2>
+    <h2>Punti di Riferimento Mappa</h2>
     <table>
       <thead>
         <tr>
-          <th>ANCHOR NAME</th>
-          <th>TYPE</th>
-          <th>GUID HASH</th>
+          <th>Nome Punto</th>
+          <th>Tipo</th>
+          <th>Identificativo GUID</th>
         </tr>
       </thead>
       <tbody>
       {% for item in positions %}
         <tr>
           <td>{{ item.name or '-' }}</td>
-          <td class="mono" style="color: var(--neon-cyan);">{{ item.type_id or item.type_name or '-' }}</td>
+          <td class="mono" style="color: var(--primary);">{{ item.type_id or item.type_name or '-' }}</td>
           <td class="mono" style="font-size: 0.8rem; color: var(--text-muted);">{{ item.guid }}</td>
         </tr>
       {% else %}
         <tr>
-          <td colspan="3" style="font-family: var(--font-mono); color: var(--text-dim); text-align: center;">// NO POSITION ANCHORS DETECTED</td>
+          <td colspan="3" style="color: var(--text-dim); text-align: center;">Nessun punto di riferimento trovato per questa mappa.</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -73,25 +72,25 @@
   </section>
 
   <section class="card">
-    <h2>RESTRICTED MAP ZONES</h2>
+    <h2>Zone Mappa Ristrette</h2>
     <table>
       <thead>
         <tr>
-          <th>ZONE NAME</th>
-          <th>TYPE</th>
-          <th>GUID HASH</th>
+          <th>Nome Zona</th>
+          <th>Tipo</th>
+          <th>Identificativo GUID</th>
         </tr>
       </thead>
       <tbody>
       {% for item in zones %}
         <tr>
           <td>{{ item.name or '-' }}</td>
-          <td class="mono" style="color: var(--neon-magenta);">{{ item.type_id or item.type_name or '-' }}</td>
+          <td class="mono" style="color: var(--danger);">{{ item.type_id or item.type_name or '-' }}</td>
           <td class="mono" style="font-size: 0.8rem; color: var(--text-muted);">{{ item.guid }}</td>
         </tr>
       {% else %}
         <tr>
-          <td colspan="3" style="font-family: var(--font-mono); color: var(--text-dim); text-align: center;">// NO RESTRICTED ZONES CONFIGURED</td>
+          <td colspan="3" style="color: var(--text-dim); text-align: center;">Nessuna zona ad accesso ristretto configurata.</td>
         </tr>
       {% endfor %}
       </tbody>

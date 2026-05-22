@@ -13,7 +13,7 @@ class MiRClientError(Exception):
 
 
 class MiRClient:
-    def __init__(self, host: str, username: str, password: str, timeout: float = 15.0) -> None:
+    def __init__(self, host: str, username: str, password: str, timeout: float = 2.0) -> None:
         cleaned_host = host.strip().rstrip('/')
         if not cleaned_host:
             raise MiRClientError('Host MiR non configurato.')

@@ -11,17 +11,16 @@
 {% set is_warning_state = 'error' in state_l or 'emergency' in state_l or 'protective' in state_l or 'abort' in state_l or 'paused' in state_l or 'pause' in state_l %}
 
 <div class="dashboard-heading">
-  <p class="eyebrow">COMMAND DECK // TELEMETRY</p>
-  <h1>Control Deck</h1>
-  <p>Live diagnostics, system status alerts, and hardware command interface.</p>
+  <h1>Panoramica Sistema</h1>
+  <p>Diagnostica live, stato del sistema in tempo reale e interfaccia comandi hardware.</p>
 </div>
 
 {% if is_low_battery or is_warning_state %}
 <section class="system-warning" role="status" aria-live="polite">
-  <strong>[!] ALARM SIGNAL DETECTED</strong>
+  <strong>ATTENZIONE: Rilevato stato critico</strong>
   <span>
-    {% if is_warning_state %}Robot State: {{ state_text }}.{% endif %}
-    {% if is_low_battery %} Critical Battery Level: {{ battery_display }}%.{% endif %}
+    {% if is_warning_state %}Stato robot: {{ state_text }}.{% endif %}
+    {% if is_low_battery %} Livello batteria basso: {{ battery_display }}%.{% endif %}
   </span>
 </section>
 {% endif %}
@@ -39,24 +38,20 @@
       interaction-prompt="none"
       aria-label="Modello 3D MiR 100"
     >
-      <div class="robot-fallback" slot="poster">// LOADING HOLOGRAPHIC GEOMETRY...</div>
+      <div class="robot-fallback" slot="poster">Caricamento modello 3D...</div>
     </model-viewer>
-    <div class="hud-frame" aria-hidden="true">
-      <span></span><span></span><span></span><span></span>
-    </div>
   </div>
   <div class="robot-hud">
-    <p class="eyebrow">TELEMETRY LINK</p>
-    <h2>{{ status.robot_name or 'MiR 100 System' }}</h2>
+    <h2>{{ status.robot_name or 'Sistema MiR 100' }}</h2>
     
     <div class="status-stack">
       <span class="status-pill {{ 'danger' if is_warning_state else 'success' }}">{{ state_text }}</span>
-      <span class="status-pill {{ 'danger' if is_low_battery else '' }}">BATT // {{ battery_display }}%</span>
+      <span class="status-pill {{ 'danger' if is_low_battery else '' }}">Batteria: {{ battery_display }}%</span>
     </div>
     
     <div class="battery-bar {{ 'danger' if is_low_battery else '' }}" style="--battery: {{ battery_display if battery_display != '-' else 0 }}%">
       <div class="battery-bar-head">
-        <span>POWER DECK</span>
+        <span>Livello Energia</span>
         <strong>{{ battery_display }}%</strong>
       </div>
       <div class="battery-track" aria-hidden="true">
@@ -66,58 +61,58 @@
     
     <dl class="hud-metrics">
       <div>
-        <dt>State Code</dt>
-        <dd class="{{ 'text-danger' if is_warning_state else '' }}" style="font-family: var(--font-mono);">{{ state_text }}</dd>
+        <dt>Stato Corrente</dt>
+        <dd class="{{ 'text-danger' if is_warning_state else '' }}">{{ state_text }}</dd>
       </div>
       <div>
-        <dt>Charge</dt>
-        <dd class="{{ 'text-danger' if is_low_battery else '' }}" style="font-family: var(--font-mono);">{{ battery_display }}%</dd>
+        <dt>Carica Residua</dt>
+        <dd class="{{ 'text-danger' if is_low_battery else '' }}">{{ battery_display }}%</dd>
       </div>
       <div>
-        <dt>Sys Mode</dt>
-        <dd style="font-family: var(--font-mono);">{{ mode_text or '-' }}</dd>
+        <dt>Modalità</dt>
+        <dd>{{ mode_text or '-' }}</dd>
       </div>
     </dl>
   </div>
 </section>
 
 <div class="dashboard-actions">
-  <a class="btn" href="/">AGGIO // REFRESH</a>
+  <a class="btn" href="/">Aggiorna Dati</a>
   <form method="post" action="/robot/ready">
-    <button class="btn success ready" type="submit">READY / RESUME</button>
+    <button class="btn success ready" type="submit">Pronto / Ripristina</button>
   </form>
   <form method="post" action="/robot/clear-errors">
-    <button class="btn danger" type="submit">RESET ERRORS</button>
+    <button class="btn danger" type="submit">Reset Errori</button>
   </form>
-  <a class="btn ghost" href="/tracking">// TARGET TRACKING</a>
+  <a class="btn ghost" href="/tracking">Inseguimento AprilTag</a>
 </div>
 
 <div class="grid two dashboard-grid">
   <section class="card">
-    <h2>SYSTEM STATUS LOGS</h2>
+    <h2>Stato Hardware</h2>
     {% if status %}
     <dl class="kv">
-      <div><dt>Hardware Node</dt><dd class="mono">{{ status.robot_name or '-' }}</dd></div>
-      <div><dt>Operation State</dt><dd class="mono"><strong class="{{ 'text-danger' if is_warning_state else '' }}">{{ state_text }}</strong></dd></div>
-      <div><dt>Battery Reserve</dt><dd class="mono {{ 'text-danger' if is_low_battery else '' }}">{{ battery_display }}%</dd></div>
-      <div><dt>Linear Velocity</dt><dd class="mono">{{ status.velocity or '-' }}</dd></div>
-      <div><dt>Active Mode</dt><dd class="mono">{{ mode_text or '-' }}</dd></div>
-      <div><dt>Nav Map</dt><dd class="mono">{{ status.map_text or status.map_id or '-' }}</dd></div>
+      <div><dt>Nome Dispositivo</dt><dd class="mono">{{ status.robot_name or '-' }}</dd></div>
+      <div><dt>Stato Operativo</dt><dd class="mono"><span class="{{ 'text-danger' if is_warning_state else 'text-success' }}">{{ state_text }}</span></dd></div>
+      <div><dt>Riserva Batteria</dt><dd class="mono {{ 'text-danger' if is_low_battery else '' }}">{{ battery_display }}%</dd></div>
+      <div><dt>Velocità Lineare</dt><dd class="mono">{{ status.velocity or '-' }} m/s</dd></div>
+      <div><dt>Modalità Attiva</dt><dd class="mono">{{ mode_text or '-' }}</dd></div>
+      <div><dt>Mappa Corrente</dt><dd class="mono">{{ status.map_text or status.map_id or '-' }}</dd></div>
     </dl>
     {% else %}
-      <p style="font-family: var(--font-mono); color: var(--text-dim);">// NO DATA STREAMING</p>
+      <p style="color: var(--text-dim);">Nessun dato di telemetria disponibile.</p>
     {% endif %}
-    <p class="note">Run <strong>READY / RESUME</strong> when the MiR hardware pauses or stops mission loops.</p>
+    <p class="note">Invia <strong>Pronto / Ripristina</strong> quando l'hardware MiR si mette in pausa o riscontra un arresto temporaneo.</p>
   </section>
 
   <section class="card">
-    <h2>MISSION TIMELINE QUEUE</h2>
+    <h2>Coda Missioni</h2>
     <table>
       <thead>
         <tr>
           <th>ID</th>
-          <th>MISSION</th>
-          <th>STATUS</th>
+          <th>Missione</th>
+          <th>Stato</th>
         </tr>
       </thead>
       <tbody>
@@ -125,11 +120,15 @@
         <tr>
           <td class="mono">{{ item.id or '-' }}</td>
           <td class="mono">{{ item.mission_text or item.mission_id or '-' }}</td>
-          <td class="mono" style="color: {% if item.state == 'Done' or item.state_text == 'Done' %}var(--neon-green){% else %}var(--neon-cyan){% endif %};">{{ item.state or item.state_text or item.state_id or '-' }}</td>
+          <td>
+            <span class="status-badge {% if item.state == 'Done' or item.state_text == 'Done' %}done{% else %}active{% endif %}">
+              {{ item.state or item.state_text or item.state_id or '-' }}
+            </span>
+          </td>
         </tr>
       {% else %}
         <tr>
-          <td colspan="3" style="font-family: var(--font-mono); color: var(--text-dim); text-align: center;">// NO MISSIONS ENQUEUED</td>
+          <td colspan="3" style="color: var(--text-dim); text-align: center;">Nessuna missione attualmente in coda.</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -139,14 +138,14 @@
 
 <section class="project-strip">
   <article>
-    <span>MODULE // 01</span>
-    <h3>MiR Controller Deck</h3>
-    <p>Provides live diagnostics, power monitoring, error overrides, and system reset hooks.</p>
+    <span>Modulo Controllo</span>
+    <h3>Diagnostica Hardware</h3>
+    <p>Monitora lo stato, il livello energetico della batteria e gestisci gli allarmi attivi sulla piattaforma MiR-100.</p>
   </article>
   <article>
-    <span>MODULE // 02</span>
-    <h3>AprilTag Target Tracker</h3>
-    <p>Hooks the mobile IP camera streams and executes PID-based line tracking relative to optical targets.</p>
+    <span>Modulo Visione</span>
+    <h3>Tracciamento AprilTag</h3>
+    <p>Configura lo stream video e attiva il follow-loop basato su feedback PID per l'inseguimento automatico dei tag ottici.</p>
   </article>
 </section>
 
