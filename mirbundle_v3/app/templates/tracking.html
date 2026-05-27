@@ -154,9 +154,9 @@
           <label style="margin-bottom: 8px; display: block;">Frequenza Fps Rilevamento</label>
           <div class="actions" style="justify-content: flex-start; gap: 8px; padding: 0;">
             <button class="btn tracking-preset small" data-hz="60" data-detect-width="900" data-linear="1.50" data-angular="1.50" type="button">60 FPS</button>
-            <button class="btn tracking-preset active small" data-hz="90" data-detect-width="720" data-linear="1.50" data-angular="1.50" type="button">90 FPS</button>
+            <button class="btn tracking-preset small" data-hz="90" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">90 FPS</button>
             <button class="btn tracking-preset small" data-hz="120" data-detect-width="480" data-linear="1.50" data-angular="1.50" type="button">120 FPS</button>
-            <button class="btn tracking-preset small" data-hz="120" data-detect-width="0" data-linear="1.50" data-angular="1.50" type="button">MAX NATIVO</button>
+            <button class="btn tracking-preset active small" data-hz="160" data-detect-width="360" data-linear="1.50" data-angular="1.50" type="button">TURBO</button>
           </div>
         </div>
         
@@ -196,13 +196,13 @@
           <button class="btn success" id="saveTrackingSettingsBtn" type="button" style="width: 100%;">Salva Configurazione</button>
         </div>
         
-        <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '90' }}">
-        <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '720' }}">
+        <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '160' }}">
+        <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '360' }}">
       </div>
     </section>
   </aside>
 
 </div>
 
-<script src="/static/tracking.js?v=pid-rosbridge-23"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-turbo-24"></script>
 {% endblock %}

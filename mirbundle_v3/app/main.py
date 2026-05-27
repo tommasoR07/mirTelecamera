@@ -31,8 +31,8 @@ DEFAULT_TRACKING_SETTINGS: dict[str, Any] = {
     'targetSize': '32',
     'maxLinear': '1.50',
     'maxAngular': '1.50',
-    'pidHz': '90',
-    'detectWidth': '720',
+    'pidHz': '160',
+    'detectWidth': '360',
 }
 
 _CV_CACHE: tuple[Any, Any] | None = None
@@ -342,7 +342,7 @@ def _load_cv2():
             import numpy as np  # type: ignore
             try:
                 cv2.setUseOptimized(True)
-                cv2.setNumThreads(max(2, min(12, os.cpu_count() or 8)))
+                cv2.setNumThreads(max(2, min(16, os.cpu_count() or 8)))
             except Exception:
                 pass
             _CV_CACHE = (cv2, np)
@@ -384,9 +384,22 @@ class _StreamFrameCache:
             with self.lock:
                 if self.url == url and self.jpeg:
                     return self.jpeg
+                if self.url == url and self.frame is not None and self.last_frame_ts and time.time() - self.last_frame_ts <= 0.35:
+                    frame = self.frame
+                    break
                 last_error = self.last_error
             time.sleep(0.03)
-        raise RuntimeError(last_error or f'Nessun frame disponibile dallo stream: {url}')
+        else:
+            raise RuntimeError(last_error or f'Nessun frame disponibile dallo stream: {url}')
+        cv2, _ = _load_cv2()
+        encoded, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 68])
+        if not encoded:
+            raise RuntimeError('Impossibile codificare frame camera.')
+        jpeg = buffer.tobytes()
+        with self.lock:
+            if self.url == url:
+                self.jpeg = jpeg
+        return jpeg
 
     def get_frame(self, url: str, wait_seconds: float = 2.0, min_frame_id: int = 0):
         url = (url or '').strip()
@@ -396,16 +409,19 @@ class _StreamFrameCache:
         deadline = time.time() + wait_seconds
         fallback = None
         fallback_age = 999.0
+        first_wait = True
         while time.time() < deadline:
             remaining = max(0.0, deadline - time.time())
             with self.frame_ready:
-                if self.url == url and self.frame is not None and self.frame_id > min_frame_id:
-                    return self.frame.copy()
-                fallback = self.frame.copy() if self.url == url and self.frame is not None else None
-                fallback_age = time.time() - self.last_frame_ts if self.last_frame_ts else 999.0
+                if self.url == url and self.frame is not None:
+                    fallback = self.frame
+                    fallback_age = time.time() - self.last_frame_ts if self.last_frame_ts else 999.0
+                    if self.frame_id > min_frame_id or fallback_age <= 0.045:
+                        return self.frame
                 last_error = self.last_error
-                self.frame_ready.wait(timeout=min(0.012, remaining))
-        if fallback is not None and fallback_age <= 0.35:
+                self.frame_ready.wait(timeout=min(0.006 if first_wait else 0.010, remaining))
+            first_wait = False
+        if fallback is not None and fallback_age <= 0.25:
             return fallback
         raise RuntimeError(last_error or f'Nessun frame disponibile dallo stream: {url}')
 
@@ -455,6 +471,8 @@ class _StreamFrameCache:
                     if not self.running or self.url != url:
                         return
                 if cap is None:
+                    if url.lower().startswith('rtsp://'):
+                        os.environ.setdefault('OPENCV_FFMPEG_CAPTURE_OPTIONS', 'rtsp_transport;udp|fflags;nobuffer|flags;low_delay|max_delay;0')
                     cap = cv2.VideoCapture(url)
                     with self.lock:
                         if self.url == url and self.running:
@@ -462,7 +480,11 @@ class _StreamFrameCache:
                     if hasattr(cv2, 'CAP_PROP_BUFFERSIZE'):
                         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                     if hasattr(cv2, 'CAP_PROP_FPS'):
-                        cap.set(cv2.CAP_PROP_FPS, 60)
+                        cap.set(cv2.CAP_PROP_FPS, 120)
+                    if hasattr(cv2, 'CAP_PROP_OPEN_TIMEOUT_MSEC'):
+                        cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 900)
+                    if hasattr(cv2, 'CAP_PROP_READ_TIMEOUT_MSEC'):
+                        cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 350)
                     if not cap.isOpened():
                         with self.frame_ready:
                             self.last_error = f'Stream video non raggiungibile: {url}'
@@ -563,8 +585,8 @@ def _get_snapshot_http_client() -> httpx.AsyncClient:
     global _SNAPSHOT_HTTP_CLIENT
     if _SNAPSHOT_HTTP_CLIENT is None:
         _SNAPSHOT_HTTP_CLIENT = httpx.AsyncClient(
-            timeout=httpx.Timeout(2.5, connect=1.0),
-            limits=httpx.Limits(max_keepalive_connections=4, max_connections=8),
+            timeout=httpx.Timeout(0.9, connect=0.35),
+            limits=httpx.Limits(max_keepalive_connections=8, max_connections=16),
         )
     return _SNAPSHOT_HTTP_CLIENT
 
@@ -700,7 +722,7 @@ def _detect_apriltags_from_frame(
             prev_cy = float(previous_tag.get('cy', 0))
             prev_side = max(float(previous_tag.get('side', 0)), float(previous_tag.get('w', 0)), float(previous_tag.get('h', 0)))
             if prev_cx > 0 and prev_cy > 0 and prev_side > 8:
-                roi_side = max(260.0, min(float(max(width, height)), prev_side * 5.2))
+                roi_side = max(180.0, min(float(max(width, height)), prev_side * 4.0))
                 roi_x = max(0, int(round(prev_cx - roi_side / 2)))
                 roi_y = max(0, int(round(prev_cy - roi_side / 2)))
                 roi_w = min(width - roi_x, int(round(roi_side)))
@@ -727,7 +749,9 @@ def _detect_apriltags_from_frame(
     preferred = target_dictionary.strip()
     if preferred and not preferred.startswith('DICT_'):
         preferred = f'DICT_{preferred}'
-    if preferred in all_dict_names:
+    if preferred in all_dict_names and target_id is not None and not acquire_target:
+        dict_names = [preferred]
+    elif preferred in all_dict_names:
         dict_names = [preferred] + [name for name in all_dict_names if name != preferred]
     elif target_id is not None and not acquire_target and not allow_dictionary_fallback:
         dict_names = ['DICT_APRILTAG_36h11']
@@ -889,14 +913,15 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
         target_dictionary, previous_tag, missed_frames = _TRACKER_STATE.snapshot(target_id, target_dictionary, previous_tag, missed_frames)
         frame = await _load_tracking_frame(snapshot_url, stream_url, last_frame_id)
         loaded = time.perf_counter()
-        detection = _detect_apriltags_from_frame(
+        detection = await asyncio.to_thread(
+            _detect_apriltags_from_frame,
             frame,
-            target_id=target_id,
-            target_dictionary=target_dictionary,
-            previous_tag=previous_tag if missed_frames <= 1 else None,
-            acquire_target=acquire_target,
-            max_detect_width=max_detect_width,
-            allow_dictionary_fallback=acquire_target or (target_id is None and missed_frames >= 2),
+            target_id,
+            target_dictionary,
+            previous_tag if missed_frames <= 2 else None,
+            acquire_target,
+            max_detect_width,
+            acquire_target or (target_id is None and missed_frames >= 2),
         )
         detected = time.perf_counter()
         _TRACKER_STATE.update(target_id, detection['tag'])

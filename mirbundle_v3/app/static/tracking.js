@@ -147,8 +147,8 @@
       targetSize: desiredRatioInput?.value || '32',
       maxLinear: maxLinearInput?.value || '1.50',
       maxAngular: maxAngularInput?.value || '1.50',
-      pidHz: pidHzInput?.value || '90',
-      detectWidth: detectWidthInput?.value || '720',
+      pidHz: pidHzInput?.value || '160',
+      detectWidth: detectWidthInput?.value || '360',
     };
   }
 
@@ -604,7 +604,7 @@
       desired_size_ratio: number(desiredRatioInput, 18) / 100,
       max_linear: number(maxLinearInput, 0.18),
       max_angular: number(maxAngularInput, 0.45),
-      max_detect_width: Math.max(0, Math.min(1920, number(detectWidthInput, 720))),
+      max_detect_width: Math.max(0, Math.min(1920, number(detectWidthInput, 360))),
       last_frame_id: lastBackendFrameId,
     };
   }
@@ -626,7 +626,7 @@
     // Update Graphical progress bars
     // 1. Loop latency bar (scaled relative to max loop rate)
     const hz = pid.lastLoopMs ? (1000 / pid.lastLoopMs) : 0;
-    const targetHz = number(pidHzInput, 90);
+    const targetHz = number(pidHzInput, 160);
     const hzMax = Math.max(120, targetHz);
     const hzPercent = clamp((hz / hzMax) * 100, 0, 100);
     if (barLoopEl) {
@@ -722,12 +722,12 @@
     busy = true;
     let timeout = null;
     const now = performance.now();
-    const renderUi = acquireTarget || now - lastUiAt > 100;
+    const renderUi = acquireTarget || now - lastUiAt > 140;
     if (renderUi) lastUiAt = now;
     try {
       const fetchStarted = performance.now();
       const controller = new AbortController();
-      timeout = window.setTimeout(() => controller.abort(), acquireTarget ? 1400 : 520);
+      timeout = window.setTimeout(() => controller.abort(), acquireTarget ? 900 : 260);
       const res = await fetch('/api/tracking/apriltag-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -835,7 +835,7 @@
       ensureRosBridge();
     }
     const elapsed = performance.now() - started;
-    const targetMs = 1000 / Math.max(1, Math.min(144, number(pidHzInput, 90)));
+    const targetMs = 1000 / Math.max(1, Math.min(180, number(pidHzInput, 160)));
     followTimer = window.setTimeout(followLoop, Math.max(0, targetMs - elapsed));
   }
 
