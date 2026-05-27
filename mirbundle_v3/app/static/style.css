@@ -398,7 +398,8 @@ h3 {
 }
 
 .grid.two {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: 1.3fr 0.7fr;
+  align-items: start;
 }
 
 .grid.dashboard-grid {
@@ -769,6 +770,7 @@ model-viewer {
 /* Actions Bar */
 .dashboard-actions, .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   justify-content: center;
   padding: 16px 0;
@@ -853,7 +855,7 @@ model-viewer {
   top: 10%; bottom: 10%; left: 50%; width: 1px;
 }
 
-#joystick-handle {
+#rosJoystickKnob {
   width: 60px;
   height: 60px;
   background: var(--text-primary);
@@ -866,7 +868,7 @@ model-viewer {
   transition: box-shadow 0.2s;
 }
 
-#joystick-handle:active {
+#rosJoystickKnob:active {
   cursor: grabbing;
   box-shadow: 0 2px 6px rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.3);
 }
