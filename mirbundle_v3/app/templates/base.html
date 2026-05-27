@@ -7,47 +7,61 @@
   <link rel="stylesheet" href="/static/style.css?v=cyber-deck-v1">
 </head>
 <body>
-  <aside class="sidebar">
-    <div class="brand">
-      <span class="brand-mark">MiR Control</span>
-      <span class="brand-copy">System Dashboard</span>
-    </div>
-    <nav aria-label="Navigazione principale">
-      <a href="/"><span class="nav-num">01</span> Dashboard</a>
-      <a href="/missions"><span class="nav-num">02</span> Missioni</a>
-      <a href="/maps"><span class="nav-num">03</span> Mappe / Localizzazione</a>
-      <a href="/tracking"><span class="nav-num">04</span> Tracking AprilTag</a>
-      <a href="/joystick-lab"><span class="nav-num">05</span> Joystick Lab</a>
-      <a href="/settings"><span class="nav-num">06</span> Configurazione</a>
-    </nav>
-  </aside>
-  <main class="main">
-    <header class="topbar">
-      <div>
-        <span>System Host IP</span>
-        <strong>{{ settings.host or 'DISCONNECTED' }}</strong>
-      </div>
-      <div>
-        <span>Active Mission Group</span>
-        <strong>{{ settings.mission_group_id or 'NONE' }}</strong>
-      </div>
-      <div>
-        <span>Telemetry Stream Feed</span>
-        <strong>{{ settings.camera_stream_url or 'INACTIVE' }}</strong>
+  <div class="app-container">
+    <header class="glass-header">
+      <div class="header-inner">
+        <div class="brand">
+          <span class="brand-mark">MiR</span>
+          <span class="brand-copy">Control System</span>
+        </div>
+        <nav class="top-nav" aria-label="Navigazione principale">
+          <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">Dashboard</a>
+          <a href="/missions" class="nav-item {% if request.path == '/missions' %}active{% endif %}">Missioni</a>
+          <a href="/maps" class="nav-item {% if request.path == '/maps' %}active{% endif %}">Mappe</a>
+          <a href="/tracking" class="nav-item {% if request.path == '/tracking' %}active{% endif %}">Tracking</a>
+          <a href="/joystick-lab" class="nav-item {% if request.path == '/joystick-lab' %}active{% endif %}">Joystick</a>
+          <a href="/settings" class="nav-item {% if request.path == '/settings' %}active{% endif %}">Settings</a>
+        </nav>
+        <div class="header-status">
+          <div class="status-indicator {{ 'connected' if settings.host else 'disconnected' }}"></div>
+        </div>
       </div>
     </header>
+
+    <main class="main-content">
+      <div class="telemetry-bar">
+        <div class="telemetry-item">
+          <span class="t-label">Host IP</span>
+          <strong class="t-value">{{ settings.host or 'DISCONNECTED' }}</strong>
+        </div>
+        <div class="telemetry-item">
+          <span class="t-label">Mission Group</span>
+          <strong class="t-value">{{ settings.mission_group_id or 'NONE' }}</strong>
+        </div>
+        <div class="telemetry-item">
+          <span class="t-label">Camera Stream</span>
+          <strong class="t-value">{{ settings.camera_stream_url or 'INACTIVE' }}</strong>
+        </div>
+      </div>
+      
+      {% if message %}
+        <div class="alert success">{{ message }}</div>
+      {% endif %}
+      {% if error %}
+        <div class="alert error">{{ error }}</div>
+      {% endif %}
+      {% if page_error %}
+        <div class="alert error">{{ page_error }}</div>
+      {% endif %}
+      
+      <div class="content-wrapper">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
     
-    {% if message %}
-      <div class="alert success">{{ message }}</div>
-    {% endif %}
-    {% if error %}
-      <div class="alert error">{{ error }}</div>
-    {% endif %}
-    {% if page_error %}
-      <div class="alert error">{{ page_error }}</div>
-    {% endif %}
-    
-    {% block content %}{% endblock %}
-  </main>
+    <footer class="app-footer">
+      <span>MiR Telemetry Interface v3.0 &copy; 2026</span>
+    </footer>
+  </div>
 </body>
 </html>

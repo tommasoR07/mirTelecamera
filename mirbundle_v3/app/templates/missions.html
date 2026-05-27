@@ -17,8 +17,8 @@
           {% endfor %}
         </select>
       </label>
-      <div class="row wrap" style="gap: 8px;">
-        <button class="btn" type="submit">Carica Missioni</button>
+      <div class="actions" style="margin-top: 16px;">
+        <button class="btn primary" type="submit">Carica Missioni</button>
         <a class="btn ghost" href="/missions{% if selected_group %}?group_id={{ selected_group }}{% endif %}">Aggiorna Elenco</a>
       </div>
     </form>
@@ -46,9 +46,9 @@
         </label>
       </div>
       
-      <div class="row wrap" style="gap: 8px; margin-top: 8px;">
-        <button class="btn" type="submit">Aggiungi in Coda</button>
-        <button class="btn success" type="submit" formaction="/missions/start-now">Avvia Subito</button>
+      <div class="actions" style="margin-top: 16px;">
+        <button class="btn ghost" type="submit">Aggiungi in Coda</button>
+        <button class="btn success ready" type="submit" formaction="/missions/start-now">Avvia Subito</button>
       </div>
     </form>
   </section>
@@ -95,17 +95,17 @@
 </section>
 
 <section class="card" style="margin-top: 20px;">
-  <div class="row space" style="margin-bottom: 12px; align-items: flex-start;">
+  <div class="actions" style="margin-bottom: 24px; justify-content: space-between;">
     <h2>Coda Cronologica dei Task</h2>
-    <div class="row" style="gap: 8px;">
-      <a class="btn ghost small" href="/missions{% if selected_group %}?group_id={{ selected_group }}{% endif %}">Aggiorna Coda</a>
+    <div class="actions" style="padding: 0;">
+      <a class="btn ghost" href="/missions{% if selected_group %}?group_id={{ selected_group }}{% endif %}">Aggiorna Coda</a>
       <form method="post" action="/missions/resume">
         <input type="hidden" name="group_id" value="{{ selected_group }}">
-        <button class="btn success small" type="submit">Pronto / Ripristina</button>
+        <button class="btn success ready" type="submit">Pronto / Ripristina</button>
       </form>
       <form method="post" action="/missions/clear-queue">
         <input type="hidden" name="group_id" value="{{ selected_group }}">
-        <button class="btn danger small" type="submit">Svuota Coda</button>
+        <button class="btn danger" type="submit">Svuota Coda</button>
       </form>
     </div>
   </div>

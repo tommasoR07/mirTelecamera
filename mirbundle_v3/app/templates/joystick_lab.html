@@ -22,8 +22,8 @@
       <input id="joystickTokenInput" placeholder="Assegnato automaticamente all'accoppiamento" readonly class="mono">
     </label>
   </div>
-  <div class="row wrap" style="gap: 8px;">
-    <button class="btn success" id="connectRosBtn" type="button">Connetti e Acquisisci Controllo</button>
+  <div class="actions" style="margin-top: 16px; justify-content: center;">
+    <button class="btn success ready" id="connectRosBtn" type="button">Connetti e Acquisisci Controllo</button>
     <button class="btn danger" id="disconnectRosBtn" type="button">Termina Connessione</button>
   </div>
 </section>
@@ -31,9 +31,9 @@
 <div class="grid two">
   <section class="card">
     <h2>Parametri Velocità Vettoriale</h2>
-    <div class="row wrap" style="gap: 6px; margin-bottom: 18px;">
-      <button class="btn ros-speed-profile active" data-linear="0.10" data-angular="0.28" type="button">Profilo Normale</button>
-      <button class="btn ros-speed-profile" data-linear="1.00" data-angular="1.00" type="button">Velocità Massima</button>
+    <div class="actions" style="margin-bottom: 24px; justify-content: center;">
+      <button class="btn primary ros-speed-profile active" data-linear="0.10" data-angular="0.28" type="button">Profilo Normale</button>
+      <button class="btn ghost ros-speed-profile" data-linear="1.00" data-angular="1.00" type="button">Velocità Massima</button>
       <button class="btn danger ros-speed-profile" data-linear="10.00" data-angular="10.00" type="button">Velocità Allarme</button>
     </div>
     
@@ -74,7 +74,9 @@
       <div class="joystick-knob" id="rosJoystickKnob"></div>
     </div>
     
-    <button class="btn danger" id="rosStopBtn" type="button" style="margin-top: 8px; width: 100%;">Arresto Pubblicazione Comandi</button>
+    <div class="actions" style="margin-top: 24px; justify-content: center;">
+      <button class="btn danger" id="rosStopBtn" type="button" style="width: 100%; max-width: 320px;">Arresto Pubblicazione Comandi</button>
+    </div>
   </section>
 </div>
 

@@ -17,7 +17,9 @@
           {% endfor %}
         </select>
       </label>
-      <button class="btn" type="submit" style="width: 100%;">Carica Punti di Riferimento</button>
+      <div class="actions" style="margin-top: 16px;">
+        <button class="btn primary" type="submit" style="width: 100%;">Carica Punti di Riferimento</button>
+      </div>
     </form>
   </section>
 
@@ -36,9 +38,9 @@
         </select>
       </label>
       
-      <div class="row wrap" style="gap: 8px;">
-        <button class="btn success" type="submit">Localizza Qui</button>
-        <button class="btn" type="submit" formaction="/maps/set-active">Attiva Mappa Spaziale</button>
+      <div class="actions" style="margin-top: 24px;">
+        <button class="btn success ready" type="submit">Localizza Qui</button>
+        <button class="btn ghost" type="submit" formaction="/maps/set-active">Attiva Mappa Spaziale</button>
       </div>
     </form>
   </section>

@@ -10,20 +10,19 @@
   <section class="card tracking-panel">
     <h2>Anteprima Stream Video</h2>
     
-    <div class="tracking-controls" style="margin-bottom: 18px;">
+    <div class="tracking-controls" style="margin-bottom: 24px;">
       <label>Endpoint Stream Telefono
         <input id="streamUrlInput" value="{{ camera_stream_url }}" placeholder="http://IP_TELEFONO:8080/video" class="mono">
       </label>
       <input id="snapshotUrlInput" type="hidden" value="{{ camera_snapshot_url }}">
       <input id="mirHostInput" type="hidden" value="{{ settings.host }}">
       
-      <div class="row wrap" style="gap: 8px; margin-top: 8px;">
+      <div class="actions" style="margin-top: 16px; justify-content: center;">
         <button class="btn" id="connectStreamBtn" type="button">Connetti Stream</button>
-        <button class="btn" id="detectTagBtn" type="button">Rileva Tag</button>
-        <button class="btn success" id="startTagFollowBtn" type="button">Avvia Inseguimento</button>
-        <button class="btn warn" id="stopFollowBtn" type="button">Ferma Inseguimento</button>
+        <button class="btn primary" id="detectTagBtn" type="button">Rileva Tag</button>
+        <button class="btn success ready" id="startTagFollowBtn" type="button">Avvia Inseguimento</button>
+        <button class="btn danger" id="stopFollowBtn" type="button">Ferma Inseguimento</button>
         <button class="btn ghost" id="clearTargetBtn" type="button">Pulisci Target</button>
-        <button class="btn danger" id="totalResetBtn" type="button">Reset Totale</button>
       </div>
     </div>
     
