@@ -706,6 +706,7 @@ def _detect_apriltags_from_frame(
     acquire_target: bool = False,
     max_detect_width: int = 640,
     allow_dictionary_fallback: bool = True,
+    far_search: bool = False,
 ) -> dict[str, Any]:
     if frame is None:
         raise RuntimeError('Frame camera non disponibile.')
@@ -716,13 +717,13 @@ def _detect_apriltags_from_frame(
     roi_w = width
     roi_h = height
     fast_roi = False
-    if target_id is not None and not acquire_target and previous_tag:
+    if target_id is not None and not acquire_target and previous_tag and not far_search:
         try:
             prev_cx = float(previous_tag.get('cx', 0))
             prev_cy = float(previous_tag.get('cy', 0))
             prev_side = max(float(previous_tag.get('side', 0)), float(previous_tag.get('w', 0)), float(previous_tag.get('h', 0)))
             if prev_cx > 0 and prev_cy > 0 and prev_side > 8:
-                roi_side = max(180.0, min(float(max(width, height)), prev_side * 4.0))
+                roi_side = max(240.0, min(float(max(width, height)), prev_side * 5.5))
                 roi_x = max(0, int(round(prev_cx - roi_side / 2)))
                 roi_y = max(0, int(round(prev_cy - roi_side / 2)))
                 roi_w = min(width - roi_x, int(round(roi_side)))
@@ -808,10 +809,18 @@ def _detect_apriltags_from_frame(
         fast_roi = False
         detect_frame = frame
         scale = 1.0
-        if max_detect_width > 0 and width > max_detect_width:
-            scale = width / float(max_detect_width)
+        retry_width = max(max_detect_width, 900)
+        if retry_width > 0 and width > retry_width:
+            scale = width / float(retry_width)
             detect_height = max(1, int(round(height / scale)))
-            detect_frame = cv2.resize(detect_frame, (max_detect_width, detect_height), interpolation=cv2.INTER_AREA)
+            detect_frame = cv2.resize(detect_frame, (retry_width, detect_height), interpolation=cv2.INTER_AREA)
+        gray = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2GRAY)
+        detections = run_detection(gray, scale, 0, 0)
+    elif not detections and far_search and max_detect_width < 900 and width > max_detect_width:
+        retry_width = min(width, 900)
+        scale = width / float(retry_width)
+        detect_height = max(1, int(round(height / scale)))
+        detect_frame = cv2.resize(frame, (retry_width, detect_height), interpolation=cv2.INTER_AREA)
         gray = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2GRAY)
         detections = run_detection(gray, scale, 0, 0)
 
@@ -845,6 +854,7 @@ def _detect_apriltags_from_frame(
         'acquired_tag_id': tag['id'] if acquire_target and tag else None,
         'acquired_tag_dictionary': tag['dictionary'] if acquire_target and tag else None,
         'fast_roi': fast_roi,
+        'far_search': far_search,
     }
 
 
@@ -906,6 +916,7 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
         max_detect_width = int(max_detect_width_raw)
     except Exception:
         max_detect_width = 640
+    far_search = bool(payload.get('far_search', False))
     last_frame_id = int(payload.get('last_frame_id') or 0)
     result: dict[str, Any] = {'ok': False, 'target_id': target_id}
     try:
@@ -922,6 +933,7 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
             acquire_target,
             max_detect_width,
             acquire_target or (target_id is None and missed_frames >= 2),
+            far_search,
         )
         detected = time.perf_counter()
         _TRACKER_STATE.update(target_id, detection['tag'])

@@ -403,8 +403,8 @@
     const rawOffset = Number(command.offset_x);
     if (!Number.isFinite(sizeRatio) || !Number.isFinite(rawOffset)) return { linear: 0, angular: 0 };
 
-    const offsetAlpha = clamp(dt / (0.015 + dt), 0.25, 0.75);
-    const sizeAlpha = clamp(dt / (0.025 + dt), 0.20, 0.65);
+    const offsetAlpha = clamp(dt / (0.006 + dt), 0.45, 0.90);
+    const sizeAlpha = clamp(dt / (0.012 + dt), 0.35, 0.82);
     const previousOffset = pid.filteredOffset ?? rawOffset;
     const previousSize = pid.filteredSize ?? sizeRatio;
     pid.filteredOffset = previousOffset + (rawOffset - previousOffset) * offsetAlpha;
@@ -412,7 +412,7 @@
 
     const rawOffsetVelocity = (pid.filteredOffset - previousOffset) / dt;
     const rawSizeVelocity = (pid.filteredSize - previousSize) / dt;
-    const velocityAlpha = clamp(dt / (0.025 + dt), 0.20, 0.65);
+    const velocityAlpha = clamp(dt / (0.014 + dt), 0.32, 0.78);
     pid.offsetVelocity += (rawOffsetVelocity - pid.offsetVelocity) * velocityAlpha;
     pid.sizeVelocity += (rawSizeVelocity - pid.sizeVelocity) * velocityAlpha;
 
@@ -421,11 +421,11 @@
     const maxLinear = number(maxLinearInput, 1.5);
     const maxAngular = number(maxAngularInput, 1.5);
 
-    const offsetDeadband = 0.045;
-    const distanceDeadband = 0.018;
+    const offsetDeadband = 0.030;
+    const distanceDeadband = 0.012;
     const offsetSign = Math.abs(offsetError) > offsetDeadband ? Math.sign(offsetError) : 0;
-    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.24) {
-      pid.angularBrakeUntil = nowMs + 90;
+    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.18) {
+      pid.angularBrakeUntil = nowMs + 35;
       pid.offsetIntegral = 0;
       pid.lastAngular = 0;
     }
@@ -437,8 +437,8 @@
     const distanceVelocity = -pid.sizeVelocity;
     const closingTooFast = distanceError > 0 ? Math.max(0, -distanceVelocity) : Math.max(0, distanceVelocity);
 
-    const curveEnter = 0.34;
-    const curveExit = 0.20;
+    const curveEnter = 0.28;
+    const curveExit = 0.14;
     pid.curveInPlace = absOffset > curveEnter || (pid.curveInPlace && absOffset > curveExit);
 
     const allowAngularIntegral = !pid.curveInPlace && absOffset < 0.26 && absOffset > offsetDeadband;
@@ -452,28 +452,28 @@
     let angularTarget = 0;
     if (pid.curveInPlace) {
       const curveDemand = smoothstep(curveExit, 0.72, absOffset);
-      const damping = clamp(1 - Math.max(0, -Math.sign(offsetError || 1) * lateralVelocity) * 0.040, 0.42, 1);
-      angularTarget = -Math.sign(offsetError || 1) * maxAngular * clamp(0.28 + curveDemand * 0.62, 0, 0.90) * damping;
+      const damping = clamp(1 - Math.max(0, -Math.sign(offsetError || 1) * lateralVelocity) * 0.028, 0.58, 1);
+      angularTarget = -Math.sign(offsetError || 1) * maxAngular * clamp(0.40 + curveDemand * 0.60, 0, 1.00) * damping;
     } else if (nowMs < pid.angularBrakeUntil) {
       angularTarget = 0;
     } else if (absOffset > offsetDeadband) {
-      const kp = number(pidInputs.angularKp, 1.80);
-      const ki = number(pidInputs.angularKi, 0.01);
-      const kd = number(pidInputs.angularKd, 0.12);
+      const kp = number(pidInputs.angularKp, 2.60);
+      const ki = number(pidInputs.angularKi, 0.00);
+      const kd = number(pidInputs.angularKd, 0.08);
       const normalized = kp * offsetError + ki * pid.offsetIntegral + kd * lateralVelocity;
-      const authority = smoothstep(offsetDeadband, 0.44, absOffset);
-      angularTarget = -maxAngular * clamp(normalized, -1, 1) * clamp(0.18 + authority * 0.82, 0, 1);
+      const authority = smoothstep(offsetDeadband, 0.34, absOffset);
+      angularTarget = -maxAngular * clamp(normalized, -1, 1) * clamp(0.28 + authority * 0.72, 0, 1);
     }
 
     let linearTarget = 0;
     if (!pid.curveInPlace) {
-      const alignmentGate = 1 - smoothstep(0.20, 0.60, absOffset);
-      const angularGate = 1 - smoothstep(maxAngular * 0.45, maxAngular * 0.90, Math.abs(pid.lastAngular));
+      const alignmentGate = 1 - smoothstep(0.28, 0.72, absOffset);
+      const angularGate = 1 - smoothstep(maxAngular * 0.62, maxAngular * 1.00, Math.abs(pid.lastAngular));
       const gate = clamp(alignmentGate * angularGate, 0, 1);
       if (distanceError > distanceDeadband) {
-        const kp = number(pidInputs.linearKp, 2.00);
-        const ki = number(pidInputs.linearKi, 0.01);
-        const kd = number(pidInputs.linearKd, 0.15);
+        const kp = number(pidInputs.linearKp, 3.20);
+        const ki = number(pidInputs.linearKi, 0.00);
+        const kd = number(pidInputs.linearKd, 0.10);
         const normalized = kp * distanceError + ki * pid.distanceIntegral - kd * closingTooFast;
         linearTarget = maxLinear * clamp(normalized, 0, 1) * gate;
       } else if (distanceError < -distanceDeadband * 1.5 && absOffset < 0.18) {
@@ -484,22 +484,22 @@
 
     const angularLimit = pid.curveInPlace
       ? maxAngular * 0.90
-      : maxAngular * clamp(0.10 + smoothstep(offsetDeadband, 0.46, absOffset) * 0.90, 0, 1);
+      : maxAngular * clamp(0.18 + smoothstep(offsetDeadband, 0.34, absOffset) * 0.82, 0, 1);
     angularTarget = clamp(angularTarget, -angularLimit, angularLimit);
-    if (absOffset < 0.025 && Math.abs(lateralVelocity) < 0.18) angularTarget = 0;
-    if (Math.abs(distanceError) < 0.012 && Math.abs(pid.sizeVelocity) < 0.08) linearTarget = 0;
+    if (absOffset < 0.018 && Math.abs(lateralVelocity) < 0.22) angularTarget = 0;
+    if (Math.abs(distanceError) < 0.009 && Math.abs(pid.sizeVelocity) < 0.10) linearTarget = 0;
 
     let angularStep;
     if (Math.sign(angularTarget) !== Math.sign(pid.lastAngular)) {
-      angularStep = maxAngular * dt * 18.0;
+      angularStep = maxAngular * dt * 32.0;
     } else if (Math.abs(angularTarget) < Math.abs(pid.lastAngular)) {
-      angularStep = maxAngular * dt * 18.0;
+      angularStep = maxAngular * dt * 34.0;
     } else {
-      angularStep = maxAngular * dt * (pid.curveInPlace ? 8.0 : 6.0);
+      angularStep = maxAngular * dt * (pid.curveInPlace ? 18.0 : 14.0);
     }
 
-    const linearAccel = maxLinear * dt * 3.2;
-    const linearBrake = maxLinear * dt * 6.8;
+    const linearAccel = maxLinear * dt * 7.5;
+    const linearBrake = maxLinear * dt * 11.0;
     const linearStep = Math.abs(linearTarget) < Math.abs(pid.lastLinear) ? linearBrake : linearAccel;
     const angular = clamp(angularTarget, pid.lastAngular - angularStep, pid.lastAngular + angularStep);
     const linear = clamp(linearTarget, pid.lastLinear - linearStep, pid.lastLinear + linearStep);
@@ -593,6 +593,10 @@
   function currentPayload(acquireTarget) {
     const streamUrl = (streamUrlInput?.value || '').trim();
     const streamIsVideo = /^(rtsp|rtmp):\/\//i.test(streamUrl) || /\/(stream|mjpeg|mjpg|video|video_feed)\b/i.test(streamUrl) || /[?&]action=stream/i.test(streamUrl);
+    const baseDetectWidth = Math.max(0, Math.min(1920, number(detectWidthInput, 360)));
+    const lastSide = Number(lastTag?.side || 0);
+    const needsFarSearch = acquireTarget || pid.missedFrames > 0 || (lastSide > 0 && lastSide < 42);
+    const adaptiveDetectWidth = needsFarSearch ? Math.max(baseDetectWidth, 900) : baseDetectWidth;
     return {
       stream_url: streamUrl,
       snapshot_url: streamIsVideo ? '' : (snapshotUrlInput?.value || '').trim(),
@@ -604,7 +608,8 @@
       desired_size_ratio: number(desiredRatioInput, 18) / 100,
       max_linear: number(maxLinearInput, 0.18),
       max_angular: number(maxAngularInput, 0.45),
-      max_detect_width: Math.max(0, Math.min(1920, number(detectWidthInput, 360))),
+      max_detect_width: Math.min(1920, adaptiveDetectWidth),
+      far_search: needsFarSearch,
       last_frame_id: lastBackendFrameId,
     };
   }
@@ -620,7 +625,7 @@
     setText(profilerDetectEl, detectText);
     setText(profilerFrameEl, perf.frame_age_ms !== undefined ? `${perf.frame_age_ms} ms` : '-');
     setText(profilerMissEl, `${pid.missedFrames}`);
-    const roiSuffix = data?.fast_roi ? ' ROI' : '';
+    const roiSuffix = data?.far_search ? ' FAR' : (data?.fast_roi ? ' ROI' : '');
     setText(profilerDictEl, `${selectedTagDictionary || data?.tag?.dictionary || '-'}${roiSuffix}`);
 
     // Update Graphical progress bars
