@@ -6,145 +6,37 @@
   <p>Flusso video live, configurazione dei parametri di rilevamento ottico e diagnostica del regolatore PID.</p>
 </div>
 
-<div class="grid two tracking-shell">
-  <section class="card tracking-panel">
-    <h2>Anteprima Stream Video</h2>
-    
-    <div class="tracking-controls" style="margin-bottom: 24px;">
-      <label>Endpoint Stream Telefono
-        <input id="streamUrlInput" value="{{ camera_stream_url }}" placeholder="http://IP_TELEFONO:8080/video" class="mono">
-      </label>
-      <input id="snapshotUrlInput" type="hidden" value="{{ camera_snapshot_url }}">
-      <input id="mirHostInput" type="hidden" value="{{ settings.host }}">
-      
-      <div class="actions" style="margin-top: 16px; justify-content: center;">
-        <button class="btn" id="connectStreamBtn" type="button">Connetti Stream</button>
-        <button class="btn primary" id="detectTagBtn" type="button">Rileva Tag</button>
-        <button class="btn success ready" id="startTagFollowBtn" type="button">Avvia Inseguimento</button>
-        <button class="btn danger" id="stopFollowBtn" type="button">Ferma Inseguimento</button>
-        <button class="btn ghost" id="clearTargetBtn" type="button">Pulisci Target</button>
-      </div>
-    </div>
-    
-    <div class="video-wrap">
-      <img id="trackingStream" alt="Stream feed">
-      <canvas id="trackingOverlay"></canvas>
-    </div>
-    
-    <div class="profiler-grid" aria-label="Profiler tracking">
-      <!-- Loop Latency Card -->
-      <div class="profiler-card">
-        <div class="profiler-header">
-          <span class="profiler-title">Latenza Loop</span>
-          <span id="profilerLoop" class="profiler-value mono">-</span>
-        </div>
-        <div class="progress-track">
-          <div id="barLoop" class="progress-fill fill-success" style="width: 0%"></div>
-        </div>
-      </div>
-      
-      <!-- Frame Fetch Card -->
-      <div class="profiler-card">
-        <div class="profiler-header">
-          <span class="profiler-title">Acquisizione Frame</span>
-          <span id="profilerFetch" class="profiler-value mono">-</span>
-        </div>
-        <div class="progress-track">
-          <div id="barFetch" class="progress-fill fill-info" style="width: 0%"></div>
-        </div>
-      </div>
-
-      <!-- Detection / Total Card -->
-      <div class="profiler-card">
-        <div class="profiler-header">
-          <span class="profiler-title">Rilevamento / Totale</span>
-          <span id="profilerDetect" class="profiler-value mono">-</span>
-        </div>
-        <div class="progress-track multi-progress">
-          <div id="barTotal" class="progress-fill fill-secondary" style="width: 0%"></div>
-          <div id="barDetect" class="progress-fill fill-primary" style="width: 0%"></div>
-        </div>
-      </div>
-
-      <!-- Frame Age Card -->
-      <div class="profiler-card">
-        <div class="profiler-header">
-          <span class="profiler-title">Età Frame</span>
-          <span id="profilerFrame" class="profiler-value mono">-</span>
-        </div>
-        <div class="progress-track">
-          <div id="barFrame" class="progress-fill fill-warning" style="width: 0%"></div>
-        </div>
-      </div>
-
-      <!-- Missed Frames / Stability Card -->
-      <div class="profiler-card">
-        <div class="profiler-header">
-          <span class="profiler-title">Affidabilità Segnale</span>
-          <span class="profiler-value mono">
-            <span id="profilerMiss" style="display: none;">0</span>
-            <span id="profilerStabilityVal">-%</span>
-          </span>
-        </div>
-        <div class="progress-track">
-          <div id="barStability" class="progress-fill fill-success" style="width: 0%"></div>
-        </div>
-      </div>
-
-      <!-- ArUco Dictionary Card -->
-      <div class="profiler-card">
-        <div class="profiler-header">
-          <span class="profiler-title">Configurazione Target</span>
-          <span id="profilerDict" class="profiler-value mono">-</span>
-        </div>
-        <div class="progress-track">
-          <div id="barDict" class="progress-fill fill-muted" style="width: 100%"></div>
-        </div>
-      </div>
-    </div>
-  </section>
+<!-- TOP PANEL: Stream & Commands -->
+<section class="card" style="margin-bottom: 32px;">
+  <h2>Controllo Stream & Inseguimento</h2>
   
-  <aside class="tracking-console">
-    <section class="card tracking-panel">
-      <h2>Parametri Regolazione PID</h2>
-      <div class="stack">
-        <label>Dimensione Target Attesa (%)
-          <input id="trackingTargetSize" type="range" min="12" max="80" step="1" value="{{ tracking_settings.targetSize or '32' }}">
-        </label>
-        <div class="row small">
-          <span>Dimensione Area Ottica Target</span>
-          <strong id="trackingTargetSizeValue" class="mono" style="color: var(--primary);">{{ tracking_settings.targetSize or '32' }}%</strong>
-        </div>
-        
-        <div class="pid-input-grid">
-          <label>Guadagno Lineare Max
-            <input id="trackingLinearGain" type="number" min="0" max="5" step="0.01" value="{{ tracking_settings.maxLinear or '1.50' }}" class="mono">
-          </label>
-          <label>Guadagno Angolare Max
-            <input id="trackingAngularGain" type="number" min="0" max="5" step="0.01" value="{{ tracking_settings.maxAngular or '1.50' }}" class="mono">
-          </label>
-        </div>
-        
-        <label>Frequenza Fps Rilevamento</label>
-        <div class="row wrap" style="gap: 6px;">
-          <button class="btn tracking-preset small" data-hz="60" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">60 FPS</button>
-          <button class="btn tracking-preset active small" data-hz="90" data-detect-width="720" data-linear="1.50" data-angular="1.50" type="button">90 FPS</button>
-          <button class="btn tracking-preset small" data-hz="120" data-detect-width="900" data-linear="1.50" data-angular="1.50" type="button">120 FPS</button>
-          <button class="btn tracking-preset small" data-hz="120" data-detect-width="0" data-linear="1.50" data-angular="1.50" type="button">MAX NATIVO</button>
-        </div>
-        
-        <button class="btn success" id="saveTrackingSettingsBtn" type="button" style="margin-top: 6px;">Salva Configurazione</button>
-        
-        <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '90' }}">
-        <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '720' }}">
-        <input id="trackingPidLinearKp" type="hidden" value="4.20">
-        <input id="trackingPidLinearKi" type="hidden" value="0.08">
-        <input id="trackingPidLinearKd" type="hidden" value="0.55">
-        <input id="trackingPidAngularKp" type="hidden" value="5.60">
-        <input id="trackingPidAngularKi" type="hidden" value="0.10">
-        <input id="trackingPidAngularKd" type="hidden" value="0.18">
-      </div>
-    </section>
+  <div class="tracking-controls" style="margin-bottom: 24px;">
+    <label>Endpoint Stream Telefono
+      <input id="streamUrlInput" value="{{ camera_stream_url }}" placeholder="http://IP_TELEFONO:8080/video" class="mono">
+    </label>
+    <input id="snapshotUrlInput" type="hidden" value="{{ camera_snapshot_url }}">
+    <input id="mirHostInput" type="hidden" value="{{ settings.host }}">
+    
+    <div class="actions" style="margin-top: 16px; justify-content: center;">
+      <button class="btn" id="connectStreamBtn" type="button">Connetti Stream</button>
+      <button class="btn primary" id="detectTagBtn" type="button">Rileva Tag</button>
+      <button class="btn success ready" id="startTagFollowBtn" type="button">Avvia Inseguimento</button>
+      <button class="btn danger" id="stopFollowBtn" type="button">Ferma Inseguimento</button>
+      <button class="btn ghost" id="clearTargetBtn" type="button">Pulisci Target</button>
+    </div>
+  </div>
+  
+  <div class="video-wrap" style="width: 100%; max-width: 1000px; margin: 0 auto; background: #000; border-radius: var(--radius-md); overflow: hidden; position: relative;">
+    <img id="trackingStream" alt="Stream feed" style="display: block; width: 100%; height: auto;">
+    <canvas id="trackingOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+  </div>
+</section>
+
+<!-- BOTTOM GRID: Status, Diagnostics, PID Settings -->
+<div class="grid two">
+  
+  <!-- LEFT COLUMN: Status and Profiler -->
+  <div class="stack" style="display: flex; flex-direction: column; gap: 32px;">
     
     <section class="card tracking-panel">
       <h2>Stato Tracciamento</h2>
@@ -162,7 +54,128 @@
         <div><dt>Loop di Controllo</dt><dd id="trackingFollowState" class="mono">NON ATTIVO</dd></div>
       </dl>
     </section>
+
+    <section class="card tracking-panel">
+      <h2>Diagnostica di Rilevamento</h2>
+      <div class="profiler-grid" aria-label="Profiler tracking" style="display: grid; gap: 16px;">
+        <div class="profiler-card">
+          <div class="profiler-header" style="display: flex; justify-content: space-between;">
+            <span class="profiler-title">Latenza Loop</span>
+            <span id="profilerLoop" class="profiler-value mono">-</span>
+          </div>
+          <div class="progress-track" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 4px;">
+            <div id="barLoop" class="progress-fill fill-success" style="width: 0%; height: 100%; background: var(--status-success);"></div>
+          </div>
+        </div>
+        
+        <div class="profiler-card">
+          <div class="profiler-header" style="display: flex; justify-content: space-between;">
+            <span class="profiler-title">Acquisizione Frame</span>
+            <span id="profilerFetch" class="profiler-value mono">-</span>
+          </div>
+          <div class="progress-track" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 4px;">
+            <div id="barFetch" class="progress-fill fill-info" style="width: 0%; height: 100%; background: var(--accent-primary);"></div>
+          </div>
+        </div>
+
+        <div class="profiler-card">
+          <div class="profiler-header" style="display: flex; justify-content: space-between;">
+            <span class="profiler-title">Rilevamento / Totale</span>
+            <span id="profilerDetect" class="profiler-value mono">-</span>
+          </div>
+          <div class="progress-track multi-progress" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 4px; position: relative;">
+            <div id="barTotal" class="progress-fill fill-secondary" style="width: 0%; height: 100%; background: var(--text-secondary); position: absolute; left: 0;"></div>
+            <div id="barDetect" class="progress-fill fill-primary" style="width: 0%; height: 100%; background: var(--accent-primary); position: absolute; left: 0;"></div>
+          </div>
+        </div>
+
+        <div class="profiler-card">
+          <div class="profiler-header" style="display: flex; justify-content: space-between;">
+            <span class="profiler-title">Età Frame</span>
+            <span id="profilerFrame" class="profiler-value mono">-</span>
+          </div>
+          <div class="progress-track" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 4px;">
+            <div id="barFrame" class="progress-fill fill-warning" style="width: 0%; height: 100%; background: var(--status-warning);"></div>
+          </div>
+        </div>
+
+        <div class="profiler-card">
+          <div class="profiler-header" style="display: flex; justify-content: space-between;">
+            <span class="profiler-title">Affidabilità Segnale</span>
+            <span class="profiler-value mono">
+              <span id="profilerMiss" style="display: none;">0</span>
+              <span id="profilerStabilityVal">-%</span>
+            </span>
+          </div>
+          <div class="progress-track" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 4px;">
+            <div id="barStability" class="progress-fill fill-success" style="width: 0%; height: 100%; background: var(--status-success);"></div>
+          </div>
+        </div>
+
+        <div class="profiler-card">
+          <div class="profiler-header" style="display: flex; justify-content: space-between;">
+            <span class="profiler-title">Configurazione Target</span>
+            <span id="profilerDict" class="profiler-value mono">-</span>
+          </div>
+          <div class="progress-track" style="height: 6px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-top: 4px;">
+            <div id="barDict" class="progress-fill fill-muted" style="width: 100%; height: 100%; background: var(--text-tertiary);"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- RIGHT COLUMN: PID Settings -->
+  <aside class="tracking-console">
+    <section class="card tracking-panel" style="height: 100%;">
+      <h2>Parametri Regolazione PID</h2>
+      <div class="stack" style="display: flex; flex-direction: column; gap: 24px; margin-top: 16px;">
+        
+        <div>
+          <label>Dimensione Target Attesa (%)
+            <input id="trackingTargetSize" type="range" min="12" max="80" step="1" value="{{ tracking_settings.targetSize or '32' }}" style="width: 100%; margin-top: 8px;">
+          </label>
+          <div class="row" style="display: flex; justify-content: space-between; margin-top: 8px;">
+            <span style="font-size: 0.85rem; color: var(--text-secondary);">Dimensione Area Ottica Target</span>
+            <strong id="trackingTargetSizeValue" class="mono" style="color: var(--accent-primary);">{{ tracking_settings.targetSize or '32' }}%</strong>
+          </div>
+        </div>
+        
+        <div class="pid-input-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <label>Guadagno Lineare Max
+            <input id="trackingLinearGain" type="number" min="0" max="5" step="0.01" value="{{ tracking_settings.maxLinear or '1.50' }}" class="mono" style="margin-top: 8px;">
+          </label>
+          <label>Guadagno Angolare Max
+            <input id="trackingAngularGain" type="number" min="0" max="5" step="0.01" value="{{ tracking_settings.maxAngular or '1.50' }}" class="mono" style="margin-top: 8px;">
+          </label>
+        </div>
+        
+        <div>
+          <label style="margin-bottom: 8px; display: block;">Frequenza Fps Rilevamento</label>
+          <div class="actions" style="justify-content: flex-start; gap: 8px; padding: 0;">
+            <button class="btn tracking-preset small" data-hz="60" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">60 FPS</button>
+            <button class="btn tracking-preset active small" data-hz="90" data-detect-width="720" data-linear="1.50" data-angular="1.50" type="button">90 FPS</button>
+            <button class="btn tracking-preset small" data-hz="120" data-detect-width="900" data-linear="1.50" data-angular="1.50" type="button">120 FPS</button>
+            <button class="btn tracking-preset small" data-hz="120" data-detect-width="0" data-linear="1.50" data-angular="1.50" type="button">MAX NATIVO</button>
+          </div>
+        </div>
+        
+        <div style="margin-top: auto; padding-top: 16px;">
+          <button class="btn success" id="saveTrackingSettingsBtn" type="button" style="width: 100%;">Salva Configurazione</button>
+        </div>
+        
+        <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '90' }}">
+        <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '720' }}">
+        <input id="trackingPidLinearKp" type="hidden" value="4.20">
+        <input id="trackingPidLinearKi" type="hidden" value="0.08">
+        <input id="trackingPidLinearKd" type="hidden" value="0.55">
+        <input id="trackingPidAngularKp" type="hidden" value="5.60">
+        <input id="trackingPidAngularKi" type="hidden" value="0.10">
+        <input id="trackingPidAngularKd" type="hidden" value="0.18">
+      </div>
+    </section>
   </aside>
+
 </div>
 
 <script src="/static/tracking.js?v=pid-rosbridge-23"></script>
