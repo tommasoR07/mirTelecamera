@@ -362,6 +362,11 @@ h3 {
   color: var(--status-warning);
 }
 
+.tracking-ready-alert {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
 /* Cards */
 .card {
   background: var(--glass-bg);

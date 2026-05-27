@@ -11,6 +11,9 @@
   const clearBtn = $('clearTargetBtn');
   const saveSettingsBtn = $('saveTrackingSettingsBtn');
   const totalResetBtn = $('totalResetBtn');
+  const readyBtn = $('trackingReadyBtn');
+  const readyStateEl = $('trackingReadyState');
+  const pauseAlertEl = $('trackingPauseAlert');
   const streamUrlInput = $('streamUrlInput');
   const snapshotUrlInput = $('snapshotUrlInput');
   const mirHostInput = $('mirHostInput');
@@ -347,6 +350,24 @@
     publishVelocity(0, 0, mode);
   }
 
+  async function sendReady() {
+    setText(readyStateEl, 'invio Ready...');
+    try {
+      const res = await fetch('/api/robot/ready', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        setText(readyStateEl, 'Ready inviato');
+        window.setTimeout(() => {
+          if (pauseAlertEl) pauseAlertEl.style.display = 'none';
+        }, 900);
+      } else {
+        setText(readyStateEl, data.error || 'errore Ready');
+      }
+    } catch (err) {
+      setText(readyStateEl, `errore Ready: ${err}`);
+    }
+  }
+
   function ensureCanvas() {
     if (!streamImg || !overlay || !ctx) return false;
     const rect = streamImg.getBoundingClientRect();
@@ -425,7 +446,7 @@
     pid.offsetVelocity += (rawOffsetVelocity - pid.offsetVelocity) * velocityAlpha;
     pid.sizeVelocity += (rawSizeVelocity - pid.sizeVelocity) * velocityAlpha;
 
-    const predictionLead = clamp(0.028 + dt * 1.8, 0.030, 0.085);
+    const predictionLead = clamp(0.018 + dt * 0.9, 0.018, 0.045);
     const offsetError = clamp(pid.filteredOffset + pid.offsetVelocity * predictionLead, -1.15, 1.15);
     const distanceError = desired - pid.filteredSize;
     const maxLinear = number(maxLinearInput, 1.5);
@@ -433,13 +454,19 @@
 
     const offsetDeadband = 0.030;
     const distanceDeadband = 0.012;
+    const absOffset = Math.abs(offsetError);
+    const absDistance = Math.abs(distanceError);
+    const lateralVelocity = pid.offsetVelocity;
+    const distanceVelocity = -pid.sizeVelocity;
+    const closingTooFast = distanceError > 0 ? Math.max(0, -distanceVelocity) : Math.max(0, distanceVelocity);
     const offsetSign = Math.abs(offsetError) > offsetDeadband ? Math.sign(offsetError) : 0;
-    const fastFlip = offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && nowMs - pid.lastOscillationAt < 520;
-    if (fastFlip && Math.abs(pid.lastAngular) > maxAngular * 0.18 && Math.abs(lateralVelocity) > 0.55) {
-      pid.oscillationScore = Math.min(5, pid.oscillationScore + 1);
-      if (pid.oscillationScore >= 2) {
-        pid.chillStopUntil = nowMs + 360;
-        pid.chillForwardUntil = nowMs + 1250;
+    const signFlip = offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign;
+    const fastFlip = signFlip && nowMs - pid.lastOscillationAt < 650;
+    if (signFlip && Math.abs(pid.lastAngular) > maxAngular * 0.12) {
+      pid.oscillationScore = Math.min(5, pid.oscillationScore + (fastFlip ? 1.5 : 0.75));
+      if (pid.oscillationScore >= 1.5) {
+        pid.chillStopUntil = nowMs + 520;
+        pid.chillForwardUntil = nowMs + 1700;
         pid.offsetIntegral = 0;
         pid.distanceIntegral = 0;
       }
@@ -455,14 +482,8 @@
     }
     if (offsetSign) pid.lastOffsetSign = offsetSign;
 
-    const absOffset = Math.abs(offsetError);
-    const absDistance = Math.abs(distanceError);
-    const lateralVelocity = pid.offsetVelocity;
-    const distanceVelocity = -pid.sizeVelocity;
-    const closingTooFast = distanceError > 0 ? Math.max(0, -distanceVelocity) : Math.max(0, distanceVelocity);
-
-    const curveEnter = 0.20;
-    const curveExit = 0.10;
+    const curveEnter = 0.24;
+    const curveExit = 0.13;
     pid.curveInPlace = absOffset > curveEnter || (pid.curveInPlace && absOffset > curveExit);
 
     const allowAngularIntegral = !pid.curveInPlace && absOffset < 0.26 && absOffset > offsetDeadband;
@@ -476,18 +497,18 @@
     let angularTarget = 0;
     if (pid.curveInPlace) {
       const curveDemand = smoothstep(curveExit, 0.72, absOffset);
-      const damping = clamp(1 - Math.max(0, -Math.sign(offsetError || 1) * lateralVelocity) * 0.028, 0.58, 1);
-      angularTarget = -Math.sign(offsetError || 1) * maxAngular * clamp(0.40 + curveDemand * 0.60, 0, 1.00) * damping;
+      const damping = clamp(1 - Math.max(0, -Math.sign(offsetError || 1) * lateralVelocity) * 0.045, 0.40, 0.86);
+      angularTarget = -Math.sign(offsetError || 1) * maxAngular * clamp(0.26 + curveDemand * 0.48, 0, 0.74) * damping;
     } else if (nowMs < pid.angularBrakeUntil && absOffset < 0.045) {
       angularTarget = 0;
     } else if (absOffset > offsetDeadband) {
-      const kp = number(pidInputs.angularKp, 2.60);
+      const kp = number(pidInputs.angularKp, 2.15);
       const ki = number(pidInputs.angularKi, 0.00);
-      const kd = number(pidInputs.angularKd, 0.08);
+      const kd = number(pidInputs.angularKd, 0.18);
       const normalized = kp * offsetError + ki * pid.offsetIntegral + kd * lateralVelocity;
       const authority = smoothstep(offsetDeadband, 0.34, absOffset);
       angularTarget = -maxAngular * clamp(normalized, -1, 1) * clamp(0.28 + authority * 0.72, 0, 1);
-      const minTurn = maxAngular * clamp(0.055 + authority * 0.10, 0, 0.16);
+      const minTurn = maxAngular * clamp(0.035 + authority * 0.07, 0, 0.105);
       if (Math.abs(angularTarget) < minTurn) {
         angularTarget = -Math.sign(offsetError || 1) * minTurn;
       }
@@ -514,7 +535,7 @@
       ? maxAngular * 0.90
       : maxAngular * clamp(0.18 + smoothstep(offsetDeadband, 0.34, absOffset) * 0.82, 0, 1);
     angularTarget = clamp(angularTarget, -angularLimit, angularLimit);
-    if (absOffset < 0.018 && Math.abs(lateralVelocity) < 0.22) angularTarget = 0;
+    if (absOffset < 0.026 && Math.abs(lateralVelocity) < 0.32) angularTarget = 0;
     if (Math.abs(distanceError) < 0.009 && Math.abs(pid.sizeVelocity) < 0.10) linearTarget = 0;
 
     if (nowMs < pid.chillStopUntil) {
@@ -525,18 +546,18 @@
     }
     if (nowMs < pid.chillForwardUntil) {
       const settle = smoothstep(pid.chillStopUntil, pid.chillForwardUntil, nowMs);
-      angularTarget *= 0.32;
+      angularTarget *= 0.18;
       linearTarget = Math.max(linearTarget, maxLinear * (0.055 + settle * 0.070));
       linearTarget = Math.min(linearTarget, maxLinear * 0.14);
     }
 
     let angularStep;
     if (Math.sign(angularTarget) !== Math.sign(pid.lastAngular)) {
-      angularStep = maxAngular * dt * 32.0;
+      angularStep = maxAngular * dt * 16.0;
     } else if (Math.abs(angularTarget) < Math.abs(pid.lastAngular)) {
-      angularStep = maxAngular * dt * 34.0;
+      angularStep = maxAngular * dt * 18.0;
     } else {
-      angularStep = maxAngular * dt * (pid.curveInPlace ? 18.0 : 14.0);
+      angularStep = maxAngular * dt * (pid.curveInPlace ? 9.0 : 10.0);
     }
 
     const linearAccel = maxLinear * dt * 7.5;
@@ -645,7 +666,7 @@
     const streamIsVideo = /^(rtsp|rtmp):\/\//i.test(streamUrl) || /\/(stream|mjpeg|mjpg|video|video_feed)\b/i.test(streamUrl) || /[?&]action=stream/i.test(streamUrl);
     const baseDetectWidth = Math.max(0, Math.min(1920, number(detectWidthInput, 360)));
     const lastSide = Number(lastTag?.side || 0);
-    const needsFarSearch = pid.missedFrames > 0 || (lastSide > 0 && lastSide < 42);
+    const needsFarSearch = pid.missedFrames >= 2 || (lastSide > 0 && lastSide < 26);
     const adaptiveDetectWidth = acquireTarget
       ? Math.max(baseDetectWidth, 640)
       : (needsFarSearch ? Math.max(baseDetectWidth, 900) : baseDetectWidth);
@@ -666,7 +687,8 @@
     };
   }
 
-  function updateProfiler(data, fetchMs = 0) {
+  function updateProfiler(data, fetchMs = 0, renderUi = true) {
+    if (!renderUi) return;
     const perf = data?.perf || {};
     const loopHz = pid.lastLoopMs ? `${(1000 / pid.lastLoopMs).toFixed(1)} Hz` : '-';
     setText(profilerLoopEl, loopHz);
@@ -779,8 +801,7 @@
     busy = true;
     let timeout = null;
     const now = performance.now();
-    const renderUi = acquireTarget || now - lastUiAt > 140;
-    if (renderUi) lastUiAt = now;
+    const renderUiDue = acquireTarget || now - lastUiAt > 360;
     try {
       const fetchStarted = performance.now();
       const controller = new AbortController();
@@ -797,6 +818,15 @@
       const fetchMs = performance.now() - fetchStarted;
       let data;
       try { data = JSON.parse(text); } catch (_) { data = { ok: false, error: text || `HTTP ${res.status}` }; }
+      const perf = data?.perf || {};
+      const telemetrySpike = !data.ok
+        || !data.tag
+        || fetchMs > 90
+        || Number(perf.total_ms || 0) > 45
+        || Number(perf.frame_age_ms || 0) > 120
+        || pid.missedFrames > 0;
+      const renderUi = renderUiDue || telemetrySpike;
+      if (renderUi) lastUiAt = performance.now();
       if (data.ok && data.acquired_tag_id !== undefined && data.acquired_tag_id !== null) {
         selectedTagId = data.acquired_tag_id;
         selectedTagDictionary = data.acquired_tag_dictionary || data.tag?.dictionary || selectedTagDictionary;
@@ -804,12 +834,13 @@
       }
       if (data.perf?.frame_id) lastBackendFrameId = Number(data.perf.frame_id) || lastBackendFrameId;
       const cmd = updateStats(data, renderUi);
-      updateProfiler(data, fetchMs);
+      updateProfiler(data, fetchMs, renderUi);
       return cmd;
     } catch (err) {
       const data = { ok: false, error: err?.name === 'AbortError' ? 'timeout camera, retry' : `errore backend: ${err}` };
-      updateStats(data, renderUi);
-      updateProfiler(data, 0);
+      lastUiAt = performance.now();
+      updateStats(data, true);
+      updateProfiler(data, 0, true);
       return null;
     } finally {
       if (timeout) window.clearTimeout(timeout);
@@ -965,6 +996,7 @@
   detectBtn?.addEventListener('click', detectTag);
   startFollowBtn?.addEventListener('click', startFollow);
   stopFollowBtn?.addEventListener('click', stopFollow);
+  readyBtn?.addEventListener('click', sendReady);
   totalResetBtn?.addEventListener('click', totalReset);
   desiredRatioInput?.addEventListener('input', updateTargetSizeLabel);
   maxLinearInput?.addEventListener('input', () => saveTrackingSettings(false));

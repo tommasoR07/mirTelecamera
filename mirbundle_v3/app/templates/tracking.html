@@ -6,8 +6,10 @@
   <p>Flusso video live, configurazione dei parametri di rilevamento ottico e diagnostica del regolatore PID.</p>
 </div>
 
-<div class="alert warning" style="margin-bottom: 20px;">
-  <span class="mono">Il mir è in pausa (Pulsante ready)</span>
+<div id="trackingPauseAlert" class="alert warning tracking-ready-alert" style="margin-bottom: 20px; {% if not robot_warning %}display: none;{% endif %}">
+  <span class="mono">Il mir è in pausa</span>
+  <button class="btn success ready small" id="trackingReadyBtn" type="button">Ready</button>
+  <span id="trackingReadyState" class="mono">{% if robot_status %}{{ robot_status.state_text or '' }}{% endif %}</span>
 </div>
 
 <!-- TOP PANEL: Stream & Commands -->
@@ -208,5 +210,5 @@
 
 </div>
 
-<script src="/static/tracking.js?v=pid-rosbridge-antiwave-29"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-sourcefast-32"></script>
 {% endblock %}

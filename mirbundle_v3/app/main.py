@@ -89,6 +89,7 @@ def on_startup() -> None:
 async def on_shutdown() -> None:
     global _SNAPSHOT_HTTP_CLIENT
     _STREAM_FRAME_CACHE.stop()
+    _APRILTAG_LIVE_DETECTOR.stop()
     if _SNAPSHOT_HTTP_CLIENT is not None:
         await _SNAPSHOT_HTTP_CLIENT.aclose()
         _SNAPSHOT_HTTP_CLIENT = None
@@ -169,6 +170,16 @@ async def robot_ready():
         return redirect('/?message=Comando Ready/Resume inviato')
     except Exception as exc:
         return redirect(f'/?error={qerr(exc)}')
+
+
+@app.post('/api/robot/ready')
+async def robot_ready_api():
+    try:
+        client = get_client()
+        await client.resume_ready()
+        return {'ok': True, 'message': 'Comando Ready/Resume inviato'}
+    except Exception as exc:
+        return {'ok': False, 'error': str(exc)}
 
 
 @app.get('/missions', response_class=HTMLResponse)
@@ -301,14 +312,25 @@ async def localize_robot(map_id: str = Form(...), position_id: str = Form(...)):
 
 
 @app.get('/tracking', response_class=HTMLResponse)
-def tracking_page(request: Request):
+async def tracking_page(request: Request):
     settings = db.get_settings()
+    robot_status = None
+    robot_warning = False
+    try:
+        client = get_client()
+        robot_status = await client.get_status()
+        state_text = str(getattr(robot_status, 'state_text', '') or '').lower()
+        robot_warning = any(token in state_text for token in ('pause', 'paused', 'protective', 'error', 'emergency', 'abort'))
+    except Exception:
+        robot_status = None
     return render(
         request,
         'tracking.html',
         camera_stream_url=settings.get('camera_stream_url', ''),
         camera_snapshot_url=settings.get('camera_snapshot_url', ''),
         tracking_settings=_load_tracking_settings(),
+        robot_status=robot_status,
+        robot_warning=robot_warning,
     )
 
 
@@ -416,12 +438,12 @@ class _StreamFrameCache:
                 if self.url == url and self.frame is not None:
                     fallback = self.frame
                     fallback_age = time.time() - self.last_frame_ts if self.last_frame_ts else 999.0
-                    if self.frame_id > min_frame_id or fallback_age <= 0.075:
+                    if self.frame_id > min_frame_id or fallback_age <= 0.095:
                         return self.frame
                 last_error = self.last_error
                 self.frame_ready.wait(timeout=min(0.006 if first_wait else 0.010, remaining))
             first_wait = False
-        if fallback is not None and fallback_age <= 0.18:
+        if fallback is not None and fallback_age <= 0.14:
             return fallback
         raise RuntimeError(last_error or f'Nessun frame disponibile dallo stream: {url}')
 
@@ -604,15 +626,15 @@ def _get_apriltag_detector(cv2, dictionary_name: str):
         if hasattr(params, 'adaptiveThreshWinSizeMin'):
             params.adaptiveThreshWinSizeMin = 3
         if hasattr(params, 'adaptiveThreshWinSizeMax'):
-            params.adaptiveThreshWinSizeMax = 9
+            params.adaptiveThreshWinSizeMax = 7
         if hasattr(params, 'adaptiveThreshWinSizeStep'):
             params.adaptiveThreshWinSizeStep = 6
         if hasattr(params, 'minMarkerPerimeterRate'):
-            params.minMarkerPerimeterRate = 0.012
+            params.minMarkerPerimeterRate = 0.008
         if hasattr(params, 'maxErroneousBitsInBorderRate'):
             params.maxErroneousBitsInBorderRate = 0.35
         if hasattr(params, 'aprilTagQuadDecimate'):
-            params.aprilTagQuadDecimate = 1.35
+            params.aprilTagQuadDecimate = 1.8
         if hasattr(params, 'aprilTagQuadSigma'):
             params.aprilTagQuadSigma = 0.0
         if hasattr(params, 'useAruco3Detection'):
@@ -637,7 +659,7 @@ def _capture_frame_from_stream(url: str) -> bytes:
 
 
 def _capture_raw_frame_from_stream(url: str, min_frame_id: int = 0):
-    return _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.015, min_frame_id=min_frame_id)
+    return _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.006, min_frame_id=min_frame_id)
 
 
 def _stream_frame_meta() -> dict[str, Any]:
@@ -725,11 +747,11 @@ def _detect_apriltags_from_frame(
             prev_vy = float(previous_tag.get('vy', 0) or 0)
             prev_side = max(float(previous_tag.get('side', 0)), float(previous_tag.get('w', 0)), float(previous_tag.get('h', 0)))
             if prev_cx > 0 and prev_cy > 0 and prev_side > 8:
-                lead_seconds = 0.060
+                lead_seconds = 0.050
                 predicted_cx = max(0.0, min(float(width), prev_cx + prev_vx * lead_seconds))
                 predicted_cy = max(0.0, min(float(height), prev_cy + prev_vy * lead_seconds))
-                speed_pad = min(180.0, (abs(prev_vx) + abs(prev_vy)) * 0.040)
-                roi_side = max(170.0 + speed_pad, min(float(max(width, height)), prev_side * 3.25 + speed_pad))
+                speed_pad = min(120.0, (abs(prev_vx) + abs(prev_vy)) * 0.030)
+                roi_side = max(145.0 + speed_pad, min(float(max(width, height)), prev_side * 2.55 + speed_pad))
                 roi_x = max(0, int(round(predicted_cx - roi_side / 2)))
                 roi_y = max(0, int(round(predicted_cy - roi_side / 2)))
                 roi_w = min(width - roi_x, int(round(roi_side)))
@@ -756,10 +778,8 @@ def _detect_apriltags_from_frame(
     preferred = target_dictionary.strip()
     if preferred and not preferred.startswith('DICT_'):
         preferred = f'DICT_{preferred}'
-    if preferred in all_dict_names and target_id is not None and not acquire_target:
+    if preferred in all_dict_names:
         dict_names = [preferred]
-    elif preferred in all_dict_names:
-        dict_names = [preferred] + [name for name in all_dict_names if name != preferred]
     elif target_id is not None and not acquire_target and not allow_dictionary_fallback:
         dict_names = ['DICT_APRILTAG_36h11']
     else:
@@ -872,6 +892,113 @@ def _detect_apriltags_from_frame(
     }
 
 
+class _AprilTagLiveDetector:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.ready = threading.Condition(self.lock)
+        self.url = ''
+        self.config: dict[str, Any] = {}
+        self.result: dict[str, Any] | None = None
+        self.result_ts = 0.0
+        self.result_frame_id = 0
+        self.thread: threading.Thread | None = None
+        self.running = False
+        self.last_error = ''
+
+    def configure(self, url: str, config: dict[str, Any]) -> None:
+        url = (url or '').strip()
+        if not url:
+            return
+        with self.lock:
+            same_url = self.running and self.url == url
+            self.config = config.copy()
+            if same_url:
+                return
+            self.running = False
+            self.ready.notify_all()
+            self.url = url
+            self.result = None
+            self.result_ts = 0.0
+            self.result_frame_id = 0
+            self.last_error = ''
+            self.running = True
+            self.thread = threading.Thread(target=self._loop, args=(url,), daemon=True)
+            self.thread.start()
+
+    def latest(self, max_age: float = 0.12, wait_seconds: float = 0.018) -> dict[str, Any] | None:
+        deadline = time.time() + wait_seconds
+        with self.ready:
+            while True:
+                if self.result is not None and time.time() - self.result_ts <= max_age:
+                    return self.result.copy()
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    return None
+                self.ready.wait(timeout=min(0.006, remaining))
+
+    def stop(self) -> None:
+        with self.ready:
+            self.running = False
+            self.url = ''
+            self.result = None
+            self.result_ts = 0.0
+            self.result_frame_id = 0
+            self.last_error = ''
+            self.ready.notify_all()
+
+    def _loop(self, url: str) -> None:
+        last_frame_id = 0
+        previous_tag: dict[str, Any] | None = None
+        while True:
+            with self.ready:
+                if not self.running or self.url != url:
+                    return
+                config = self.config.copy()
+            try:
+                frame = _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.010, min_frame_id=last_frame_id)
+                with _STREAM_FRAME_CACHE.lock:
+                    current_frame_id = _STREAM_FRAME_CACHE.frame_id
+                if current_frame_id == last_frame_id:
+                    time.sleep(0.002)
+                    continue
+                last_frame_id = current_frame_id
+                started = time.perf_counter()
+                detection = _detect_apriltags_from_frame(
+                    frame,
+                    target_id=config.get('target_id'),
+                    target_dictionary=str(config.get('target_dictionary') or 'APRILTAG_25h9'),
+                    previous_tag=previous_tag or config.get('previous_tag'),
+                    acquire_target=False,
+                    max_detect_width=int(config.get('max_detect_width') or 360),
+                    allow_dictionary_fallback=False,
+                    far_search=bool(config.get('far_search', False)),
+                )
+                detected = time.perf_counter()
+                previous_tag = detection.get('tag') or previous_tag
+                detection['perf'] = {
+                    'load_ms': 0.0,
+                    'detect_ms': round((detected - started) * 1000, 1),
+                    'total_ms': round((detected - started) * 1000, 1),
+                    **_stream_frame_meta(),
+                }
+                with self.ready:
+                    if self.running and self.url == url:
+                        self.result = detection
+                        self.result_ts = time.time()
+                        self.result_frame_id = current_frame_id
+                        self.last_error = ''
+                        self.ready.notify_all()
+            except Exception as exc:
+                with self.ready:
+                    if self.running and self.url == url:
+                        self.last_error = str(exc)
+                        self.ready.notify_all()
+                time.sleep(0.010)
+
+
+_APRILTAG_LIVE_DETECTOR = _AprilTagLiveDetector()
+
+
 def _compute_tag_tracking_command(tag: dict[str, Any] | None, width: int, height: int, desired_size_ratio: float, max_linear: float, max_angular: float) -> dict[str, Any]:
     if not tag or not width or not height:
         return {'linear': 0.0, 'angular': 0.0, 'suggestion': 'AprilTag non rilevato: stop', 'offset_x': None, 'size_ratio': None}
@@ -936,27 +1063,44 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
     try:
         started = time.perf_counter()
         target_dictionary, previous_tag, missed_frames = _TRACKER_STATE.snapshot(target_id, target_dictionary, previous_tag, missed_frames)
-        frame = await _load_tracking_frame(snapshot_url, stream_url, last_frame_id)
-        loaded = time.perf_counter()
-        detection = await asyncio.to_thread(
-            _detect_apriltags_from_frame,
-            frame,
-            target_id,
-            target_dictionary,
-            previous_tag if missed_frames <= 2 else None,
-            acquire_target,
-            max_detect_width,
-            (not target_dictionary) and (acquire_target or (target_id is None and missed_frames >= 2)),
-            far_search,
-        )
-        detected = time.perf_counter()
+        live_detection = None
+        stream_is_video = bool(stream_url and _is_video_stream_url(stream_url))
+        if stream_is_video and not acquire_target and target_id is not None:
+            _APRILTAG_LIVE_DETECTOR.configure(stream_url, {
+                'target_id': target_id,
+                'target_dictionary': target_dictionary or 'APRILTAG_25h9',
+                'previous_tag': previous_tag,
+                'max_detect_width': max_detect_width,
+                'far_search': far_search,
+            })
+            live_detection = _APRILTAG_LIVE_DETECTOR.latest(max_age=0.10, wait_seconds=0.010)
+        if live_detection is not None:
+            detection = live_detection
+            loaded = started
+            detected = started + float(detection.get('perf', {}).get('total_ms') or 0.0) / 1000.0
+        else:
+            frame = await _load_tracking_frame(snapshot_url, stream_url, last_frame_id)
+            loaded = time.perf_counter()
+            detection = await asyncio.to_thread(
+                _detect_apriltags_from_frame,
+                frame,
+                target_id,
+                target_dictionary,
+                previous_tag if missed_frames <= 2 else None,
+                acquire_target,
+                max_detect_width,
+                (not target_dictionary) and (acquire_target or (target_id is None and missed_frames >= 2)),
+                far_search,
+            )
+            detected = time.perf_counter()
         _TRACKER_STATE.update(target_id, detection['tag'])
         command = _compute_tag_tracking_command(detection['tag'], detection['width'], detection['height'], desired_size_ratio, max_linear, max_angular)
+        perf = detection.get('perf') if isinstance(detection.get('perf'), dict) else None
         result.update({
             'ok': True,
             **detection,
             'command': command,
-            'perf': {
+            'perf': perf or {
                 'load_ms': round((loaded - started) * 1000, 1),
                 'detect_ms': round((detected - loaded) * 1000, 1),
                 'total_ms': round((detected - started) * 1000, 1),
@@ -982,6 +1126,7 @@ async def tracking_stop():
 @app.post('/api/tracking/reset')
 async def tracking_reset():
     _STREAM_FRAME_CACHE.stop()
+    _APRILTAG_LIVE_DETECTOR.stop()
     _TRACKER_STATE.reset()
     return {'ok': True, 'message': 'Tracking e cache camera resettati'}
 
