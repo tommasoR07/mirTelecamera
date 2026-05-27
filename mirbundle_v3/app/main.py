@@ -604,15 +604,15 @@ def _get_apriltag_detector(cv2, dictionary_name: str):
         if hasattr(params, 'adaptiveThreshWinSizeMin'):
             params.adaptiveThreshWinSizeMin = 3
         if hasattr(params, 'adaptiveThreshWinSizeMax'):
-            params.adaptiveThreshWinSizeMax = 13
+            params.adaptiveThreshWinSizeMax = 9
         if hasattr(params, 'adaptiveThreshWinSizeStep'):
-            params.adaptiveThreshWinSizeStep = 10
+            params.adaptiveThreshWinSizeStep = 6
         if hasattr(params, 'minMarkerPerimeterRate'):
             params.minMarkerPerimeterRate = 0.012
         if hasattr(params, 'maxErroneousBitsInBorderRate'):
             params.maxErroneousBitsInBorderRate = 0.35
         if hasattr(params, 'aprilTagQuadDecimate'):
-            params.aprilTagQuadDecimate = 1.0
+            params.aprilTagQuadDecimate = 1.35
         if hasattr(params, 'aprilTagQuadSigma'):
             params.aprilTagQuadSigma = 0.0
         if hasattr(params, 'useAruco3Detection'):
@@ -725,16 +725,16 @@ def _detect_apriltags_from_frame(
             prev_vy = float(previous_tag.get('vy', 0) or 0)
             prev_side = max(float(previous_tag.get('side', 0)), float(previous_tag.get('w', 0)), float(previous_tag.get('h', 0)))
             if prev_cx > 0 and prev_cy > 0 and prev_side > 8:
-                lead_seconds = 0.075
+                lead_seconds = 0.060
                 predicted_cx = max(0.0, min(float(width), prev_cx + prev_vx * lead_seconds))
                 predicted_cy = max(0.0, min(float(height), prev_cy + prev_vy * lead_seconds))
-                speed_pad = min(260.0, (abs(prev_vx) + abs(prev_vy)) * 0.055)
-                roi_side = max(220.0 + speed_pad, min(float(max(width, height)), prev_side * 5.0 + speed_pad))
+                speed_pad = min(180.0, (abs(prev_vx) + abs(prev_vy)) * 0.040)
+                roi_side = max(170.0 + speed_pad, min(float(max(width, height)), prev_side * 3.25 + speed_pad))
                 roi_x = max(0, int(round(predicted_cx - roi_side / 2)))
                 roi_y = max(0, int(round(predicted_cy - roi_side / 2)))
                 roi_w = min(width - roi_x, int(round(roi_side)))
                 roi_h = min(height - roi_y, int(round(roi_side)))
-                if roi_w >= 120 and roi_h >= 120 and roi_w * roi_h < width * height * 0.72:
+                if roi_w >= 110 and roi_h >= 110 and roi_w * roi_h < width * height * 0.90:
                     fast_roi = True
         except Exception:
             fast_roi = False
@@ -752,7 +752,7 @@ def _detect_apriltags_from_frame(
         raise RuntimeError('Modulo AprilTag non disponibile. Installa: pip install opencv-contrib-python-headless')
 
     aruco = cv2.aruco
-    all_dict_names = ['DICT_APRILTAG_36h11', 'DICT_APRILTAG_25h9', 'DICT_APRILTAG_16h5']
+    all_dict_names = ['DICT_APRILTAG_25h9', 'DICT_APRILTAG_36h11', 'DICT_APRILTAG_16h5']
     preferred = target_dictionary.strip()
     if preferred and not preferred.startswith('DICT_'):
         preferred = f'DICT_{preferred}'
@@ -812,16 +812,24 @@ def _detect_apriltags_from_frame(
 
     detections = run_detection(gray, scale, roi_x if fast_roi else 0, roi_y if fast_roi else 0)
     if fast_roi and not detections:
-        fast_roi = False
-        detect_frame = frame
+        center_x = roi_x + roi_w / 2.0
+        center_y = roi_y + roi_h / 2.0
+        expanded_side = min(float(max(width, height)), max(float(roi_w), float(roi_h)) * 1.75)
+        expanded_x = max(0, int(round(center_x - expanded_side / 2)))
+        expanded_y = max(0, int(round(center_y - expanded_side / 2)))
+        expanded_w = min(width - expanded_x, int(round(expanded_side)))
+        expanded_h = min(height - expanded_y, int(round(expanded_side)))
+        detect_frame = frame[expanded_y:expanded_y + expanded_h, expanded_x:expanded_x + expanded_w]
         scale = 1.0
-        retry_width = max(max_detect_width, 900)
-        if retry_width > 0 and width > retry_width:
-            scale = width / float(retry_width)
-            detect_height = max(1, int(round(height / scale)))
+        retry_width = max(max_detect_width, 520)
+        if retry_width > 0 and detect_frame.shape[1] > retry_width:
+            scale = detect_frame.shape[1] / float(retry_width)
+            detect_height = max(1, int(round(detect_frame.shape[0] / scale)))
             detect_frame = cv2.resize(detect_frame, (retry_width, detect_height), interpolation=cv2.INTER_AREA)
         gray = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2GRAY)
-        detections = run_detection(gray, scale, 0, 0)
+        detections = run_detection(gray, scale, expanded_x, expanded_y)
+        if not detections:
+            fast_roi = False
     elif not detections and far_search and max_detect_width < 900 and width > max_detect_width:
         retry_width = min(width, 900)
         scale = width / float(retry_width)

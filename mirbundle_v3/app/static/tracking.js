@@ -426,10 +426,9 @@
     const offsetDeadband = 0.030;
     const distanceDeadband = 0.012;
     const offsetSign = Math.abs(offsetError) > offsetDeadband ? Math.sign(offsetError) : 0;
-    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.18) {
-      pid.angularBrakeUntil = nowMs + 35;
+    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.045) {
+      pid.angularBrakeUntil = nowMs + 18;
       pid.offsetIntegral = 0;
-      pid.lastAngular = 0;
     }
     if (offsetSign) pid.lastOffsetSign = offsetSign;
 
@@ -439,8 +438,8 @@
     const distanceVelocity = -pid.sizeVelocity;
     const closingTooFast = distanceError > 0 ? Math.max(0, -distanceVelocity) : Math.max(0, distanceVelocity);
 
-    const curveEnter = 0.28;
-    const curveExit = 0.14;
+    const curveEnter = 0.20;
+    const curveExit = 0.10;
     pid.curveInPlace = absOffset > curveEnter || (pid.curveInPlace && absOffset > curveExit);
 
     const allowAngularIntegral = !pid.curveInPlace && absOffset < 0.26 && absOffset > offsetDeadband;
@@ -456,7 +455,7 @@
       const curveDemand = smoothstep(curveExit, 0.72, absOffset);
       const damping = clamp(1 - Math.max(0, -Math.sign(offsetError || 1) * lateralVelocity) * 0.028, 0.58, 1);
       angularTarget = -Math.sign(offsetError || 1) * maxAngular * clamp(0.40 + curveDemand * 0.60, 0, 1.00) * damping;
-    } else if (nowMs < pid.angularBrakeUntil) {
+    } else if (nowMs < pid.angularBrakeUntil && absOffset < 0.045) {
       angularTarget = 0;
     } else if (absOffset > offsetDeadband) {
       const kp = number(pidInputs.angularKp, 2.60);
@@ -465,6 +464,10 @@
       const normalized = kp * offsetError + ki * pid.offsetIntegral + kd * lateralVelocity;
       const authority = smoothstep(offsetDeadband, 0.34, absOffset);
       angularTarget = -maxAngular * clamp(normalized, -1, 1) * clamp(0.28 + authority * 0.72, 0, 1);
+      const minTurn = maxAngular * clamp(0.055 + authority * 0.10, 0, 0.16);
+      if (Math.abs(angularTarget) < minTurn) {
+        angularTarget = -Math.sign(offsetError || 1) * minTurn;
+      }
     }
 
     let linearTarget = 0;
@@ -606,14 +609,16 @@
     const streamIsVideo = /^(rtsp|rtmp):\/\//i.test(streamUrl) || /\/(stream|mjpeg|mjpg|video|video_feed)\b/i.test(streamUrl) || /[?&]action=stream/i.test(streamUrl);
     const baseDetectWidth = Math.max(0, Math.min(1920, number(detectWidthInput, 360)));
     const lastSide = Number(lastTag?.side || 0);
-    const needsFarSearch = acquireTarget || pid.missedFrames > 0 || (lastSide > 0 && lastSide < 42);
-    const adaptiveDetectWidth = needsFarSearch ? Math.max(baseDetectWidth, 900) : baseDetectWidth;
+    const needsFarSearch = pid.missedFrames > 0 || (lastSide > 0 && lastSide < 42);
+    const adaptiveDetectWidth = acquireTarget
+      ? Math.max(baseDetectWidth, 640)
+      : (needsFarSearch ? Math.max(baseDetectWidth, 900) : baseDetectWidth);
     return {
       stream_url: streamUrl,
       snapshot_url: streamIsVideo ? '' : (snapshotUrlInput?.value || '').trim(),
       acquire_target: !!acquireTarget,
       target_id: selectedTagId,
-      target_dictionary: selectedTagDictionary,
+      target_dictionary: selectedTagDictionary || 'APRILTAG_25h9',
       missed_frames: pid.missedFrames,
       last_tag: lastTag,
       desired_size_ratio: number(desiredRatioInput, 18) / 100,
