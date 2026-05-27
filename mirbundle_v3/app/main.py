@@ -416,12 +416,12 @@ class _StreamFrameCache:
                 if self.url == url and self.frame is not None:
                     fallback = self.frame
                     fallback_age = time.time() - self.last_frame_ts if self.last_frame_ts else 999.0
-                    if self.frame_id > min_frame_id or fallback_age <= 0.045:
+                    if self.frame_id > min_frame_id or fallback_age <= 0.075:
                         return self.frame
                 last_error = self.last_error
                 self.frame_ready.wait(timeout=min(0.006 if first_wait else 0.010, remaining))
             first_wait = False
-        if fallback is not None and fallback_age <= 0.25:
+        if fallback is not None and fallback_age <= 0.18:
             return fallback
         raise RuntimeError(last_error or f'Nessun frame disponibile dallo stream: {url}')
 
@@ -604,11 +604,11 @@ def _get_apriltag_detector(cv2, dictionary_name: str):
         if hasattr(params, 'adaptiveThreshWinSizeMin'):
             params.adaptiveThreshWinSizeMin = 3
         if hasattr(params, 'adaptiveThreshWinSizeMax'):
-            params.adaptiveThreshWinSizeMax = 23
+            params.adaptiveThreshWinSizeMax = 13
         if hasattr(params, 'adaptiveThreshWinSizeStep'):
             params.adaptiveThreshWinSizeStep = 10
         if hasattr(params, 'minMarkerPerimeterRate'):
-            params.minMarkerPerimeterRate = 0.018
+            params.minMarkerPerimeterRate = 0.012
         if hasattr(params, 'maxErroneousBitsInBorderRate'):
             params.maxErroneousBitsInBorderRate = 0.35
         if hasattr(params, 'aprilTagQuadDecimate'):
@@ -637,7 +637,7 @@ def _capture_frame_from_stream(url: str) -> bytes:
 
 
 def _capture_raw_frame_from_stream(url: str, min_frame_id: int = 0):
-    return _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.08, min_frame_id=min_frame_id)
+    return _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.025, min_frame_id=min_frame_id)
 
 
 def _stream_frame_meta() -> dict[str, Any]:
@@ -721,11 +721,17 @@ def _detect_apriltags_from_frame(
         try:
             prev_cx = float(previous_tag.get('cx', 0))
             prev_cy = float(previous_tag.get('cy', 0))
+            prev_vx = float(previous_tag.get('vx', 0) or 0)
+            prev_vy = float(previous_tag.get('vy', 0) or 0)
             prev_side = max(float(previous_tag.get('side', 0)), float(previous_tag.get('w', 0)), float(previous_tag.get('h', 0)))
             if prev_cx > 0 and prev_cy > 0 and prev_side > 8:
-                roi_side = max(240.0, min(float(max(width, height)), prev_side * 5.5))
-                roi_x = max(0, int(round(prev_cx - roi_side / 2)))
-                roi_y = max(0, int(round(prev_cy - roi_side / 2)))
+                lead_seconds = 0.075
+                predicted_cx = max(0.0, min(float(width), prev_cx + prev_vx * lead_seconds))
+                predicted_cy = max(0.0, min(float(height), prev_cy + prev_vy * lead_seconds))
+                speed_pad = min(260.0, (abs(prev_vx) + abs(prev_vy)) * 0.055)
+                roi_side = max(220.0 + speed_pad, min(float(max(width, height)), prev_side * 5.0 + speed_pad))
+                roi_x = max(0, int(round(predicted_cx - roi_side / 2)))
+                roi_y = max(0, int(round(predicted_cy - roi_side / 2)))
                 roi_w = min(width - roi_x, int(round(roi_side)))
                 roi_h = min(height - roi_y, int(round(roi_side)))
                 if roi_w >= 120 and roi_h >= 120 and roi_w * roi_h < width * height * 0.72:

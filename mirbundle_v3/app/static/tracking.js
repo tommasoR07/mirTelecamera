@@ -75,6 +75,7 @@
   let rosReconnectAt = 0;
   let selectedTagDictionary = '';
   let lastTag = null;
+  let lastTagSampleAt = 0;
   let pid = resetPid();
 
   function resetPid() {
@@ -416,7 +417,8 @@
     pid.offsetVelocity += (rawOffsetVelocity - pid.offsetVelocity) * velocityAlpha;
     pid.sizeVelocity += (rawSizeVelocity - pid.sizeVelocity) * velocityAlpha;
 
-    const offsetError = pid.filteredOffset;
+    const predictionLead = clamp(0.028 + dt * 1.8, 0.030, 0.085);
+    const offsetError = clamp(pid.filteredOffset + pid.offsetVelocity * predictionLead, -1.15, 1.15);
     const distanceError = desired - pid.filteredSize;
     const maxLinear = number(maxLinearInput, 1.5);
     const maxAngular = number(maxAngularInput, 1.5);
@@ -568,6 +570,13 @@
     pid.backendErrorFrames = 0;
     const cmd = data.command || {};
     if (tag.dictionary) selectedTagDictionary = tag.dictionary;
+    const tagSeenAt = performance.now();
+    const tagDt = lastTagSampleAt ? clamp((tagSeenAt - lastTagSampleAt) / 1000, 0.006, 0.12) : 0.016;
+    const prevCx = Number(lastTag?.cx);
+    const prevCy = Number(lastTag?.cy);
+    const vx = Number.isFinite(prevCx) ? clamp((Number(tag.cx) - prevCx) / tagDt, -4200, 4200) : 0;
+    const vy = Number.isFinite(prevCy) ? clamp((Number(tag.cy) - prevCy) / tagDt, -4200, 4200) : 0;
+    lastTagSampleAt = tagSeenAt;
     lastTag = {
       x: tag.x,
       y: tag.y,
@@ -576,6 +585,8 @@
       cx: tag.cx,
       cy: tag.cy,
       side: tag.side,
+      vx,
+      vy,
     };
     if (renderUi) {
       if (selectedTagId !== null) setText(tagIdEl, selectedTagId);
@@ -792,6 +803,7 @@
     selectedTagId = null;
     selectedTagDictionary = '';
     lastTag = null;
+    lastTagSampleAt = 0;
     lastBackendFrameId = 0;
     pid = resetPid();
     setText(tagIdEl, '-');
@@ -858,6 +870,7 @@
     selectedTagId = null;
     selectedTagDictionary = '';
     lastTag = null;
+    lastTagSampleAt = 0;
     pid = resetPid();
     busy = false;
     advertised = false;
@@ -901,6 +914,7 @@
     selectedTagId = null;
     selectedTagDictionary = '';
     lastTag = null;
+    lastTagSampleAt = 0;
     pid = resetPid();
     setText(tagIdEl, '-');
     setText(targetStateEl, 'target rimosso');
