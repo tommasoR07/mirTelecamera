@@ -896,7 +896,7 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
             previous_tag=previous_tag if missed_frames <= 1 else None,
             acquire_target=acquire_target,
             max_detect_width=max_detect_width,
-            allow_dictionary_fallback=acquire_target or missed_frames >= 2,
+            allow_dictionary_fallback=acquire_target or (target_id is None and missed_frames >= 2),
         )
         detected = time.perf_counter()
         _TRACKER_STATE.update(target_id, detection['tag'])

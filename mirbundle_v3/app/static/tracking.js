@@ -101,6 +101,23 @@
     };
   }
 
+  function resetTransientTrackingState() {
+    pid.lastTs = 0;
+    pid.distanceIntegral = 0;
+    pid.distancePrev = 0;
+    pid.offsetIntegral = 0;
+    pid.offsetPrev = 0;
+    pid.filteredOffset = null;
+    pid.filteredSize = null;
+    pid.offsetVelocity = 0;
+    pid.sizeVelocity = 0;
+    pid.angularBrakeUntil = 0;
+    pid.lastOffsetSign = 0;
+    pid.curveInPlace = false;
+    pid.lastLinear = 0;
+    pid.lastAngular = 0;
+  }
+
   function setText(el, value) {
     if (el) el.textContent = value;
   }
@@ -386,8 +403,8 @@
     const rawOffset = Number(command.offset_x);
     if (!Number.isFinite(sizeRatio) || !Number.isFinite(rawOffset)) return { linear: 0, angular: 0 };
 
-    const offsetAlpha = clamp(dt / (0.026 + dt), 0.18, 0.58);
-    const sizeAlpha = clamp(dt / (0.045 + dt), 0.12, 0.42);
+    const offsetAlpha = clamp(dt / (0.015 + dt), 0.25, 0.75);
+    const sizeAlpha = clamp(dt / (0.025 + dt), 0.20, 0.65);
     const previousOffset = pid.filteredOffset ?? rawOffset;
     const previousSize = pid.filteredSize ?? sizeRatio;
     pid.filteredOffset = previousOffset + (rawOffset - previousOffset) * offsetAlpha;
@@ -395,7 +412,7 @@
 
     const rawOffsetVelocity = (pid.filteredOffset - previousOffset) / dt;
     const rawSizeVelocity = (pid.filteredSize - previousSize) / dt;
-    const velocityAlpha = clamp(dt / (0.055 + dt), 0.12, 0.46);
+    const velocityAlpha = clamp(dt / (0.025 + dt), 0.20, 0.65);
     pid.offsetVelocity += (rawOffsetVelocity - pid.offsetVelocity) * velocityAlpha;
     pid.sizeVelocity += (rawSizeVelocity - pid.sizeVelocity) * velocityAlpha;
 
@@ -440,9 +457,9 @@
     } else if (nowMs < pid.angularBrakeUntil) {
       angularTarget = 0;
     } else if (absOffset > offsetDeadband) {
-      const kp = number(pidInputs.angularKp, 5.6);
-      const ki = number(pidInputs.angularKi, 0.10);
-      const kd = number(pidInputs.angularKd, 0.18);
+      const kp = number(pidInputs.angularKp, 1.80);
+      const ki = number(pidInputs.angularKi, 0.01);
+      const kd = number(pidInputs.angularKd, 0.12);
       const normalized = kp * offsetError + ki * pid.offsetIntegral + kd * lateralVelocity;
       const authority = smoothstep(offsetDeadband, 0.44, absOffset);
       angularTarget = -maxAngular * clamp(normalized, -1, 1) * clamp(0.18 + authority * 0.82, 0, 1);
@@ -450,16 +467,15 @@
 
     let linearTarget = 0;
     if (!pid.curveInPlace) {
-      const alignmentGate = 1 - smoothstep(0.08, 0.36, absOffset);
-      const angularGate = 1 - smoothstep(maxAngular * 0.18, maxAngular * 0.78, Math.abs(pid.lastAngular));
+      const alignmentGate = 1 - smoothstep(0.20, 0.60, absOffset);
+      const angularGate = 1 - smoothstep(maxAngular * 0.45, maxAngular * 0.90, Math.abs(pid.lastAngular));
       const gate = clamp(alignmentGate * angularGate, 0, 1);
       if (distanceError > distanceDeadband) {
-        const kp = number(pidInputs.linearKp, 4.2);
-        const ki = number(pidInputs.linearKi, 0.08);
-        const kd = number(pidInputs.linearKd, 0.55);
+        const kp = number(pidInputs.linearKp, 2.00);
+        const ki = number(pidInputs.linearKi, 0.01);
+        const kd = number(pidInputs.linearKd, 0.15);
         const normalized = kp * distanceError + ki * pid.distanceIntegral - kd * closingTooFast;
-        const approachProfile = smoothstep(distanceDeadband, 0.28, distanceError);
-        linearTarget = maxLinear * clamp(normalized, 0, 1) * clamp(0.20 + approachProfile * 0.80, 0, 1) * gate;
+        linearTarget = maxLinear * clamp(normalized, 0, 1) * gate;
       } else if (distanceError < -distanceDeadband * 1.5 && absOffset < 0.18) {
         const reverseProfile = smoothstep(distanceDeadband * 1.5, 0.14, -distanceError);
         linearTarget = -maxLinear * 0.18 * reverseProfile;
@@ -473,11 +489,19 @@
     if (absOffset < 0.025 && Math.abs(lateralVelocity) < 0.18) angularTarget = 0;
     if (Math.abs(distanceError) < 0.012 && Math.abs(pid.sizeVelocity) < 0.08) linearTarget = 0;
 
-    const angularSlew = maxAngular * dt * (pid.curveInPlace ? 6.4 : 4.6);
+    let angularStep;
+    if (Math.sign(angularTarget) !== Math.sign(pid.lastAngular)) {
+      angularStep = maxAngular * dt * 18.0;
+    } else if (Math.abs(angularTarget) < Math.abs(pid.lastAngular)) {
+      angularStep = maxAngular * dt * 18.0;
+    } else {
+      angularStep = maxAngular * dt * (pid.curveInPlace ? 8.0 : 6.0);
+    }
+
     const linearAccel = maxLinear * dt * 3.2;
     const linearBrake = maxLinear * dt * 6.8;
     const linearStep = Math.abs(linearTarget) < Math.abs(pid.lastLinear) ? linearBrake : linearAccel;
-    const angular = clamp(angularTarget, pid.lastAngular - angularSlew, pid.lastAngular + angularSlew);
+    const angular = clamp(angularTarget, pid.lastAngular - angularStep, pid.lastAngular + angularStep);
     const linear = clamp(linearTarget, pid.lastLinear - linearStep, pid.lastLinear + linearStep);
     pid.lastAngular = angular;
     pid.lastLinear = linear;
@@ -515,7 +539,10 @@
         }
         if (pid.missedFrames % 3 === 1) drawGuide();
       }
-      if (followEnabled) safeBrake('camera retry');
+      if (followEnabled && (pid.lastLinear !== 0 || pid.lastAngular !== 0)) {
+        publishVelocity(0, 0, 'camera retry');
+      }
+      resetTransientTrackingState();
       return null;
     }
     const tag = data.tag || null;
@@ -529,7 +556,10 @@
         setText(precisionEl, 'perso');
         setText(curveModeEl, 'spenta');
       }
-      if (followEnabled) safeBrake('target perso');
+      if (followEnabled && (pid.lastLinear !== 0 || pid.lastAngular !== 0)) {
+        publishVelocity(0, 0, 'target perso');
+      }
+      resetTransientTrackingState();
       return null;
     }
     lastSeenAt = performance.now();
