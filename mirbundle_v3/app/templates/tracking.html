@@ -32,14 +32,77 @@
       <canvas id="trackingOverlay"></canvas>
     </div>
     
-    <dl class="tracking-profiler" aria-label="Profiler tracking">
-      <div><dt>Latenza Loop</dt><dd id="profilerLoop" class="mono">-</dd></div>
-      <div><dt>Acquisizione Frame</dt><dd id="profilerFetch" class="mono">-</dd></div>
-      <div><dt>Rilevamento / Totale</dt><dd id="profilerDetect" class="mono">-</dd></div>
-      <div><dt>Età Frame</dt><dd id="profilerFrame" class="mono">-</dd></div>
-      <div><dt>Frame Persi</dt><dd id="profilerMiss" class="mono">0</dd></div>
-      <div><dt>Dizionario ArUco</dt><dd id="profilerDict" class="mono">-</dd></div>
-    </dl>
+    <div class="profiler-grid" aria-label="Profiler tracking">
+      <!-- Loop Latency Card -->
+      <div class="profiler-card">
+        <div class="profiler-header">
+          <span class="profiler-title">Latenza Loop</span>
+          <span id="profilerLoop" class="profiler-value mono">-</span>
+        </div>
+        <div class="progress-track">
+          <div id="barLoop" class="progress-fill fill-success" style="width: 0%"></div>
+        </div>
+      </div>
+      
+      <!-- Frame Fetch Card -->
+      <div class="profiler-card">
+        <div class="profiler-header">
+          <span class="profiler-title">Acquisizione Frame</span>
+          <span id="profilerFetch" class="profiler-value mono">-</span>
+        </div>
+        <div class="progress-track">
+          <div id="barFetch" class="progress-fill fill-info" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Detection / Total Card -->
+      <div class="profiler-card">
+        <div class="profiler-header">
+          <span class="profiler-title">Rilevamento / Totale</span>
+          <span id="profilerDetect" class="profiler-value mono">-</span>
+        </div>
+        <div class="progress-track multi-progress">
+          <div id="barTotal" class="progress-fill fill-secondary" style="width: 0%"></div>
+          <div id="barDetect" class="progress-fill fill-primary" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Frame Age Card -->
+      <div class="profiler-card">
+        <div class="profiler-header">
+          <span class="profiler-title">Età Frame</span>
+          <span id="profilerFrame" class="profiler-value mono">-</span>
+        </div>
+        <div class="progress-track">
+          <div id="barFrame" class="progress-fill fill-warning" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Missed Frames / Stability Card -->
+      <div class="profiler-card">
+        <div class="profiler-header">
+          <span class="profiler-title">Affidabilità Segnale</span>
+          <span class="profiler-value mono">
+            <span id="profilerMiss" style="display: none;">0</span>
+            <span id="profilerStabilityVal">-%</span>
+          </span>
+        </div>
+        <div class="progress-track">
+          <div id="barStability" class="progress-fill fill-success" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- ArUco Dictionary Card -->
+      <div class="profiler-card">
+        <div class="profiler-header">
+          <span class="profiler-title">Configurazione Target</span>
+          <span id="profilerDict" class="profiler-value mono">-</span>
+        </div>
+        <div class="progress-track">
+          <div id="barDict" class="progress-fill fill-muted" style="width: 100%"></div>
+        </div>
+      </div>
+    </div>
   </section>
   
   <aside class="tracking-console">

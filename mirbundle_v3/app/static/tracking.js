@@ -31,6 +31,14 @@
   const profilerFrameEl = $('profilerFrame');
   const profilerMissEl = $('profilerMiss');
   const profilerDictEl = $('profilerDict');
+  const barLoopEl = $('barLoop');
+  const barFetchEl = $('barFetch');
+  const barDetectEl = $('barDetect');
+  const barTotalEl = $('barTotal');
+  const barFrameEl = $('barFrame');
+  const barStabilityEl = $('barStability');
+  const profilerStabilityValEl = $('profilerStabilityVal');
+  const barDictEl = $('barDict');
   const desiredRatioInput = $('trackingTargetSize');
   const desiredRatioValue = $('trackingTargetSizeValue');
   const maxLinearInput = $('trackingLinearGain');
@@ -95,6 +103,12 @@
 
   function setText(el, value) {
     if (el) el.textContent = value;
+  }
+
+  function setBarColorClass(barEl, type) {
+    if (!barEl) return;
+    barEl.classList.remove('fill-success', 'fill-warning', 'fill-danger', 'fill-info', 'fill-primary', 'fill-secondary', 'fill-muted');
+    barEl.classList.add(`fill-${type}`);
   }
 
   function number(el, fallback) {
@@ -578,6 +592,99 @@
     setText(profilerMissEl, `${pid.missedFrames}`);
     const roiSuffix = data?.fast_roi ? ' ROI' : '';
     setText(profilerDictEl, `${selectedTagDictionary || data?.tag?.dictionary || '-'}${roiSuffix}`);
+
+    // Update Graphical progress bars
+    // 1. Loop latency bar (scaled relative to max loop rate)
+    const hz = pid.lastLoopMs ? (1000 / pid.lastLoopMs) : 0;
+    const targetHz = number(pidHzInput, 90);
+    const hzMax = Math.max(120, targetHz);
+    const hzPercent = clamp((hz / hzMax) * 100, 0, 100);
+    if (barLoopEl) {
+      barLoopEl.style.width = `${hzPercent}%`;
+      if (hz >= targetHz * 0.9) {
+        setBarColorClass(barLoopEl, 'success');
+      } else if (hz >= targetHz * 0.6) {
+        setBarColorClass(barLoopEl, 'warning');
+      } else {
+        setBarColorClass(barLoopEl, 'danger');
+      }
+    }
+
+    // 2. Fetch latency bar (scaled 0-50ms)
+    if (barFetchEl) {
+      const fetchPercent = clamp((fetchMs / 50) * 100, 0, 100);
+      barFetchEl.style.width = `${fetchPercent}%`;
+      if (fetchMs === 0) {
+        barFetchEl.style.width = '0%';
+      } else if (fetchMs <= 15) {
+        setBarColorClass(barFetchEl, 'info');
+      } else if (fetchMs <= 35) {
+        setBarColorClass(barFetchEl, 'warning');
+      } else {
+        setBarColorClass(barFetchEl, 'danger');
+      }
+    }
+
+    // 3. Detection / Total overlapping bars (scaled 0-60ms)
+    if (barDetectEl && barTotalEl) {
+      const detectMs = perf.detect_ms ?? 0;
+      const totalMs = perf.total_ms ?? detectMs;
+      const detectPercent = clamp((detectMs / 60) * 100, 0, 100);
+      const totalPercent = clamp((totalMs / 60) * 100, 0, 100);
+      barDetectEl.style.width = `${detectPercent}%`;
+      barTotalEl.style.width = `${totalPercent}%`;
+
+      if (totalMs === 0) {
+        barDetectEl.style.width = '0%';
+        barTotalEl.style.width = '0%';
+      } else if (totalMs > 45) {
+        setBarColorClass(barTotalEl, 'danger');
+      } else if (totalMs > 25) {
+        setBarColorClass(barTotalEl, 'warning');
+      } else {
+        setBarColorClass(barTotalEl, 'secondary');
+      }
+    }
+
+    // 4. Frame Age bar (scaled 0-150ms)
+    if (barFrameEl) {
+      const age = perf.frame_age_ms ?? 0;
+      const agePercent = clamp(age / 150 * 100, 0, 100);
+      barFrameEl.style.width = `${agePercent}%`;
+      if (perf.frame_age_ms === undefined) {
+        barFrameEl.style.width = '0%';
+      } else if (age <= 60) {
+        setBarColorClass(barFrameEl, 'success');
+      } else if (age <= 120) {
+        setBarColorClass(barFrameEl, 'warning');
+      } else {
+        setBarColorClass(barFrameEl, 'danger');
+      }
+    }
+
+    // 5. Stability bar (Math.max(0, 100 - missedFrames * 20) %)
+    const stability = Math.max(0, 100 - pid.missedFrames * 20);
+    setText(profilerStabilityValEl, `${stability}%`);
+    if (barStabilityEl) {
+      barStabilityEl.style.width = `${stability}%`;
+      if (stability >= 90) {
+        setBarColorClass(barStabilityEl, 'success');
+      } else if (stability >= 50) {
+        setBarColorClass(barStabilityEl, 'warning');
+      } else {
+        setBarColorClass(barStabilityEl, 'danger');
+      }
+    }
+
+    // 6. Target configuration static/active indicator
+    if (barDictEl) {
+      barDictEl.style.width = '100%';
+      if (selectedTagId !== null) {
+        setBarColorClass(barDictEl, 'success');
+      } else {
+        setBarColorClass(barDictEl, 'muted');
+      }
+    }
   }
 
   async function tagStep(acquireTarget) {
