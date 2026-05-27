@@ -160,18 +160,44 @@
           </div>
         </div>
         
+        <!-- PID Angular Gains -->
+        <div>
+          <label style="margin-bottom: 8px; display: block; color: var(--accent-primary);">Guadagni PID Angolare (Rotazione)</label>
+          <div class="pid-input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+            <label>Kp (Prop)
+              <input id="trackingPidAngularKp" type="number" min="0" max="10" step="0.05" value="0.80" class="mono" style="margin-top: 4px;">
+            </label>
+            <label>Ki (Int)
+              <input id="trackingPidAngularKi" type="number" min="0" max="2" step="0.01" value="0.00" class="mono" style="margin-top: 4px;">
+            </label>
+            <label>Kd (Der)
+              <input id="trackingPidAngularKd" type="number" min="0" max="5" step="0.01" value="0.05" class="mono" style="margin-top: 4px;">
+            </label>
+          </div>
+        </div>
+
+        <!-- PID Linear Gains -->
+        <div>
+          <label style="margin-bottom: 8px; display: block; color: var(--accent-primary);">Guadagni PID Lineare (Avanti/Indietro)</label>
+          <div class="pid-input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+            <label>Kp (Prop)
+              <input id="trackingPidLinearKp" type="number" min="0" max="10" step="0.05" value="0.80" class="mono" style="margin-top: 4px;">
+            </label>
+            <label>Ki (Int)
+              <input id="trackingPidLinearKi" type="number" min="0" max="2" step="0.01" value="0.00" class="mono" style="margin-top: 4px;">
+            </label>
+            <label>Kd (Der)
+              <input id="trackingPidLinearKd" type="number" min="0" max="5" step="0.01" value="0.10" class="mono" style="margin-top: 4px;">
+            </label>
+          </div>
+        </div>
+        
         <div style="margin-top: auto; padding-top: 16px;">
           <button class="btn success" id="saveTrackingSettingsBtn" type="button" style="width: 100%;">Salva Configurazione</button>
         </div>
         
         <input id="trackingPidHz" type="hidden" value="{{ tracking_settings.pidHz or '90' }}">
         <input id="trackingDetectWidth" type="hidden" value="{{ tracking_settings.detectWidth or '720' }}">
-        <input id="trackingPidLinearKp" type="hidden" value="2.50">
-        <input id="trackingPidLinearKi" type="hidden" value="0.05">
-        <input id="trackingPidLinearKd" type="hidden" value="0.75">
-        <input id="trackingPidAngularKp" type="hidden" value="2.80">
-        <input id="trackingPidAngularKi" type="hidden" value="0.05">
-        <input id="trackingPidAngularKd" type="hidden" value="0.65">
       </div>
     </section>
   </aside>
