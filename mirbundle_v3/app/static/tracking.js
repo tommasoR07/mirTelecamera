@@ -54,6 +54,8 @@
   const brightnessValue = $('trackingBrightnessValue');
   const claheInput = $('trackingClahe');
   const claheValue = $('trackingClaheValue');
+  const prepModeInput = $('trackingPrepMode');
+  const manualPrepControls = $('manualPrepControls');
   const pidInputs = {
     linearKp: $('trackingPidLinearKp'),
     linearKi: $('trackingPidLinearKi'),
@@ -180,6 +182,7 @@
       contrastAlpha: contrastInput?.value || '1.0',
       brightnessBeta: brightnessInput?.value || '0.0',
       claheClipLimit: claheInput?.value || '2.0',
+      preprocessingMode: prepModeInput?.value || 'auto',
     };
   }
 
@@ -209,7 +212,11 @@
       claheInput.value = saved.claheClipLimit;
       setText(claheValue, saved.claheClipLimit);
     }
+    if (saved.preprocessingMode && prepModeInput) {
+      prepModeInput.value = saved.preprocessingMode;
+    }
     updatePresetActiveState();
+    togglePrepControlsDisplay();
   }
 
   function updateImageLabels() {
@@ -217,6 +224,14 @@
     if (brightnessInput) setText(brightnessValue, brightnessInput.value);
     if (claheInput) setText(claheValue, claheInput.value);
     saveTrackingSettings(false);
+  }
+
+  function togglePrepControlsDisplay() {
+    const isAuto = prepModeInput?.value === 'auto';
+    if (manualPrepControls) {
+      manualPrepControls.style.opacity = isAuto ? '0.35' : '1.0';
+      manualPrepControls.style.pointerEvents = isAuto ? 'none' : 'auto';
+    }
   }
 
   function updateTargetSizeLabel() {
@@ -1048,6 +1063,10 @@
   maxAngularInput?.addEventListener('input', () => saveTrackingSettings(false));
   pidHzInput?.addEventListener('input', () => saveTrackingSettings(false));
   detectWidthInput?.addEventListener('input', () => saveTrackingSettings(false));
+  prepModeInput?.addEventListener('change', () => {
+    togglePrepControlsDisplay();
+    saveTrackingSettings(false);
+  });
   contrastInput?.addEventListener('input', updateImageLabels);
   brightnessInput?.addEventListener('input', updateImageLabels);
   claheInput?.addEventListener('input', updateImageLabels);

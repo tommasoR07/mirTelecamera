@@ -42,6 +42,7 @@ DEFAULT_TRACKING_SETTINGS: dict[str, Any] = {
     'contrastAlpha': '1.0',
     'brightnessBeta': '0.0',
     'claheClipLimit': '2.0',
+    'preprocessingMode': 'auto',
 }
 
 _CV_CACHE: tuple[Any, Any] | None = None
@@ -803,14 +804,21 @@ def _detect_apriltags_from_frame(
         detect_frame = cv2.resize(detect_frame, (max_detect_width, detect_height), interpolation=cv2.INTER_AREA)
     gray = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2GRAY)
     settings = _load_tracking_settings()
-    contrast_alpha = float(settings.get('contrastAlpha', 1.0))
-    brightness_beta = float(settings.get('brightnessBeta', 0.0))
-    clahe_clip_limit = float(settings.get('claheClipLimit', 2.0))
-    if abs(contrast_alpha - 1.0) > 0.01 or abs(brightness_beta) > 0.01:
-        gray = cv2.convertScaleAbs(gray, alpha=contrast_alpha, beta=brightness_beta)
-    if clahe_clip_limit > 0.01:
-        clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=(8, 8))
+    mode = str(settings.get('preprocessingMode', 'auto')).strip().lower()
+    
+    if mode == 'auto':
+        cv2.normalize(gray, gray, 0, 255, cv2.NORM_MINMAX)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         gray = clahe.apply(gray)
+    else:
+        contrast_alpha = float(settings.get('contrastAlpha', 1.0))
+        brightness_beta = float(settings.get('brightnessBeta', 0.0))
+        clahe_clip_limit = float(settings.get('claheClipLimit', 2.0))
+        if abs(contrast_alpha - 1.0) > 0.01 or abs(brightness_beta) > 0.01:
+            gray = cv2.convertScaleAbs(gray, alpha=contrast_alpha, beta=brightness_beta)
+        if clahe_clip_limit > 0.01:
+            clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=(8, 8))
+            gray = clahe.apply(gray)
 
     if not hasattr(cv2, 'aruco'):
         raise RuntimeError('Modulo AprilTag non disponibile. Installa: pip install opencv-contrib-python-headless')
@@ -1079,12 +1087,6 @@ def _compute_tag_tracking_command(tag: dict[str, Any] | None, width: int, height
         'size_ratio': round(float(size_ratio), 4),
     }
 
-
-_BACKEND_TRACKING_ACTIVE = False
-_BACKEND_TRACKING_TASK: asyncio.Task | None = None
-_ROS_BRIDGE_CLIENT: _ROSBridgeClient | None = None
-_LAST_TRACKING_STATUS: dict[str, Any] = {'tracking_active': False}
-_PID_CONTROLLER = _PIDController()
 
 
 class _ROSBridgeClient:
@@ -1408,6 +1410,13 @@ class _PIDController:
                 self.control_mode = "tracking"
                 
         return linear, angular, self.control_mode
+
+
+_BACKEND_TRACKING_ACTIVE = False
+_BACKEND_TRACKING_TASK: asyncio.Task | None = None
+_ROS_BRIDGE_CLIENT: _ROSBridgeClient | None = None
+_LAST_TRACKING_STATUS: dict[str, Any] = {'tracking_active': False}
+_PID_CONTROLLER = _PIDController()
 
 
 async def _backend_tracking_loop():
