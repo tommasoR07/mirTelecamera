@@ -637,7 +637,7 @@ def _capture_frame_from_stream(url: str) -> bytes:
 
 
 def _capture_raw_frame_from_stream(url: str, min_frame_id: int = 0):
-    return _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.025, min_frame_id=min_frame_id)
+    return _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.015, min_frame_id=min_frame_id)
 
 
 def _stream_frame_meta() -> dict[str, Any]:
@@ -946,7 +946,7 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
             previous_tag if missed_frames <= 2 else None,
             acquire_target,
             max_detect_width,
-            acquire_target or (target_id is None and missed_frames >= 2),
+            (not target_dictionary) and (acquire_target or (target_id is None and missed_frames >= 2)),
             far_search,
         )
         detected = time.perf_counter()

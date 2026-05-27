@@ -93,6 +93,10 @@
       missedFrames: 0,
       angularBrakeUntil: 0,
       lastOffsetSign: 0,
+      lastOscillationAt: 0,
+      oscillationScore: 0,
+      chillStopUntil: 0,
+      chillForwardUntil: 0,
       curveInPlace: false,
       lastLinear: 0,
       lastAngular: 0,
@@ -114,6 +118,10 @@
     pid.sizeVelocity = 0;
     pid.angularBrakeUntil = 0;
     pid.lastOffsetSign = 0;
+    pid.lastOscillationAt = 0;
+    pid.oscillationScore = 0;
+    pid.chillStopUntil = 0;
+    pid.chillForwardUntil = 0;
     pid.curveInPlace = false;
     pid.lastLinear = 0;
     pid.lastAngular = 0;
@@ -426,6 +434,21 @@
     const offsetDeadband = 0.030;
     const distanceDeadband = 0.012;
     const offsetSign = Math.abs(offsetError) > offsetDeadband ? Math.sign(offsetError) : 0;
+    const fastFlip = offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && nowMs - pid.lastOscillationAt < 520;
+    if (fastFlip && Math.abs(pid.lastAngular) > maxAngular * 0.18 && Math.abs(lateralVelocity) > 0.55) {
+      pid.oscillationScore = Math.min(5, pid.oscillationScore + 1);
+      if (pid.oscillationScore >= 2) {
+        pid.chillStopUntil = nowMs + 360;
+        pid.chillForwardUntil = nowMs + 1250;
+        pid.offsetIntegral = 0;
+        pid.distanceIntegral = 0;
+      }
+    } else if (!fastFlip && nowMs - pid.lastOscillationAt > 700) {
+      pid.oscillationScore = Math.max(0, pid.oscillationScore - 0.35);
+    }
+    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign) {
+      pid.lastOscillationAt = nowMs;
+    }
     if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.045) {
       pid.angularBrakeUntil = nowMs + 18;
       pid.offsetIntegral = 0;
@@ -494,6 +517,19 @@
     if (absOffset < 0.018 && Math.abs(lateralVelocity) < 0.22) angularTarget = 0;
     if (Math.abs(distanceError) < 0.009 && Math.abs(pid.sizeVelocity) < 0.10) linearTarget = 0;
 
+    if (nowMs < pid.chillStopUntil) {
+      pid.lastAngular = 0;
+      pid.lastLinear = 0;
+      setText(curveModeEl, 'chill stop');
+      return { linear: 0, angular: 0, mode: 'anti-ondulazione stop' };
+    }
+    if (nowMs < pid.chillForwardUntil) {
+      const settle = smoothstep(pid.chillStopUntil, pid.chillForwardUntil, nowMs);
+      angularTarget *= 0.32;
+      linearTarget = Math.max(linearTarget, maxLinear * (0.055 + settle * 0.070));
+      linearTarget = Math.min(linearTarget, maxLinear * 0.14);
+    }
+
     let angularStep;
     if (Math.sign(angularTarget) !== Math.sign(pid.lastAngular)) {
       angularStep = maxAngular * dt * 32.0;
@@ -511,7 +547,7 @@
     pid.lastAngular = angular;
     pid.lastLinear = linear;
     setText(curveModeEl, pid.curveInPlace ? 'attiva' : 'spenta');
-    const mode = pid.curveInPlace ? 'curva sul posto' : gateMode(absOffset, Math.abs(angular));
+    const mode = nowMs < pid.chillForwardUntil ? 'anti-ondulazione avanti chill' : (pid.curveInPlace ? 'curva sul posto' : gateMode(absOffset, Math.abs(angular)));
     return { linear, angular, mode };
   }
 
@@ -748,7 +784,7 @@
     try {
       const fetchStarted = performance.now();
       const controller = new AbortController();
-      timeout = window.setTimeout(() => controller.abort(), acquireTarget ? 900 : 260);
+      timeout = window.setTimeout(() => controller.abort(), acquireTarget ? 520 : 190);
       const res = await fetch('/api/tracking/apriltag-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
