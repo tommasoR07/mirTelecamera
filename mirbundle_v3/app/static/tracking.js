@@ -56,7 +56,7 @@
     angularKi: $('trackingPidAngularKi'),
     angularKd: $('trackingPidAngularKd'),
   };
-  const STORAGE_KEY = 'mir.trackingPid.v1';
+  const STORAGE_KEY = 'mir.trackingPid.v2.stable';
   if (streamImg) {
     streamImg.decoding = 'async';
     streamImg.loading = 'eager';
@@ -100,6 +100,8 @@
       oscillationScore: 0,
       chillStopUntil: 0,
       chillForwardUntil: 0,
+      stableFrames: 0,
+      controlMode: 'idle',
       curveInPlace: false,
       lastLinear: 0,
       lastAngular: 0,
@@ -125,6 +127,8 @@
     pid.oscillationScore = 0;
     pid.chillStopUntil = 0;
     pid.chillForwardUntil = 0;
+    pid.stableFrames = 0;
+    pid.controlMode = 'idle';
     pid.curveInPlace = false;
     pid.lastLinear = 0;
     pid.lastAngular = 0;
@@ -350,6 +354,31 @@
     publishVelocity(0, 0, mode);
   }
 
+  let statusPollTimer = null;
+
+  async function checkRobotStatus() {
+    try {
+      const res = await fetch('/api/robot/status');
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        if (data.is_paused) {
+          if (pauseAlertEl) pauseAlertEl.style.display = 'flex';
+          setText(readyStateEl, data.state_text || 'PAUSA');
+        } else {
+          if (pauseAlertEl) pauseAlertEl.style.display = 'none';
+        }
+      }
+    } catch (_) {
+      // Silent failure on network issues to avoid flooding the developer console
+    }
+  }
+
+  function startStatusPolling() {
+    if (statusPollTimer) return;
+    checkRobotStatus();
+    statusPollTimer = window.setInterval(checkRobotStatus, 1200);
+  }
+
   async function sendReady() {
     setText(readyStateEl, 'invio Ready...');
     try {
@@ -357,9 +386,9 @@
       const data = await res.json().catch(() => ({}));
       if (data.ok) {
         setText(readyStateEl, 'Ready inviato');
-        window.setTimeout(() => {
-          if (pauseAlertEl) pauseAlertEl.style.display = 'none';
-        }, 900);
+        // Instantly update status layout in quick successions to clear warning state fast
+        window.setTimeout(checkRobotStatus, 400);
+        window.setTimeout(checkRobotStatus, 1200);
       } else {
         setText(readyStateEl, data.error || 'errore Ready');
       }
@@ -433,8 +462,8 @@
     const rawOffset = Number(command.offset_x);
     if (!Number.isFinite(sizeRatio) || !Number.isFinite(rawOffset)) return { linear: 0, angular: 0 };
 
-    const offsetAlpha = clamp(dt / (0.006 + dt), 0.45, 0.90);
-    const sizeAlpha = clamp(dt / (0.012 + dt), 0.35, 0.82);
+    const offsetAlpha = clamp(dt / (0.010 + dt), 0.38, 0.78);
+    const sizeAlpha = clamp(dt / (0.022 + dt), 0.24, 0.62);
     const previousOffset = pid.filteredOffset ?? rawOffset;
     const previousSize = pid.filteredSize ?? sizeRatio;
     pid.filteredOffset = previousOffset + (rawOffset - previousOffset) * offsetAlpha;
@@ -442,18 +471,19 @@
 
     const rawOffsetVelocity = (pid.filteredOffset - previousOffset) / dt;
     const rawSizeVelocity = (pid.filteredSize - previousSize) / dt;
-    const velocityAlpha = clamp(dt / (0.014 + dt), 0.32, 0.78);
+    const velocityAlpha = clamp(dt / (0.030 + dt), 0.18, 0.58);
     pid.offsetVelocity += (rawOffsetVelocity - pid.offsetVelocity) * velocityAlpha;
     pid.sizeVelocity += (rawSizeVelocity - pid.sizeVelocity) * velocityAlpha;
 
-    const predictionLead = clamp(0.018 + dt * 0.9, 0.018, 0.045);
-    const offsetError = clamp(pid.filteredOffset + pid.offsetVelocity * predictionLead, -1.15, 1.15);
+    const predictionLead = clamp(0.010 + dt * 0.45, 0.010, 0.028);
+    const predictedOffset = pid.filteredOffset + pid.offsetVelocity * predictionLead;
+    const offsetError = clamp(predictedOffset, -1.0, 1.0);
     const distanceError = desired - pid.filteredSize;
-    const maxLinear = number(maxLinearInput, 1.5);
-    const maxAngular = number(maxAngularInput, 1.5);
+    const maxLinear = Math.min(number(maxLinearInput, 1.5), 1.65);
+    const maxAngular = Math.min(number(maxAngularInput, 1.65), 1.85);
 
-    const offsetDeadband = 0.030;
-    const distanceDeadband = 0.012;
+    const offsetDeadband = 0.040;
+    const distanceDeadband = 0.014;
     const absOffset = Math.abs(offsetError);
     const absDistance = Math.abs(distanceError);
     const lateralVelocity = pid.offsetVelocity;
@@ -461,114 +491,104 @@
     const closingTooFast = distanceError > 0 ? Math.max(0, -distanceVelocity) : Math.max(0, distanceVelocity);
     const offsetSign = Math.abs(offsetError) > offsetDeadband ? Math.sign(offsetError) : 0;
     const signFlip = offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign;
-    const fastFlip = signFlip && nowMs - pid.lastOscillationAt < 650;
-    if (signFlip && Math.abs(pid.lastAngular) > maxAngular * 0.12) {
-      pid.oscillationScore = Math.min(5, pid.oscillationScore + (fastFlip ? 1.5 : 0.75));
-      if (pid.oscillationScore >= 1.5) {
-        pid.chillStopUntil = nowMs + 520;
-        pid.chillForwardUntil = nowMs + 1700;
+    const fastFlip = signFlip && nowMs - pid.lastOscillationAt < 760;
+    if (signFlip && Math.abs(pid.lastAngular) > maxAngular * 0.08) {
+      pid.oscillationScore = Math.min(6, pid.oscillationScore + (fastFlip ? 1.3 : 0.8));
+      if (pid.oscillationScore >= 1.6) {
+        pid.chillStopUntil = nowMs + 420;
+        pid.chillForwardUntil = nowMs + 1550;
         pid.offsetIntegral = 0;
         pid.distanceIntegral = 0;
       }
-    } else if (!fastFlip && nowMs - pid.lastOscillationAt > 700) {
-      pid.oscillationScore = Math.max(0, pid.oscillationScore - 0.35);
+    } else if (!fastFlip && nowMs - pid.lastOscillationAt > 900) {
+      pid.oscillationScore = Math.max(0, pid.oscillationScore - 0.45);
     }
-    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign) {
+    if (signFlip) {
       pid.lastOscillationAt = nowMs;
-    }
-    if (offsetSign && pid.lastOffsetSign && offsetSign !== pid.lastOffsetSign && Math.abs(offsetError) < 0.045) {
-      pid.angularBrakeUntil = nowMs + 18;
-      pid.offsetIntegral = 0;
     }
     if (offsetSign) pid.lastOffsetSign = offsetSign;
 
-    const curveEnter = 0.24;
-    const curveExit = 0.13;
+    const stableNow = absOffset < 0.075 && Math.abs(lateralVelocity) < 0.28;
+    pid.stableFrames = stableNow ? Math.min(40, pid.stableFrames + 1) : 0;
+    const curveEnter = 0.30;
+    const curveExit = 0.16;
     pid.curveInPlace = absOffset > curveEnter || (pid.curveInPlace && absOffset > curveExit);
 
-    const allowAngularIntegral = !pid.curveInPlace && absOffset < 0.26 && absOffset > offsetDeadband;
-    pid.offsetIntegral = allowAngularIntegral ? clamp(pid.offsetIntegral + offsetError * dt, -0.18, 0.18) : 0;
-    const allowLinearIntegral = absOffset < 0.16 && absDistance < 0.16 && absDistance > distanceDeadband;
-    pid.distanceIntegral = allowLinearIntegral ? clamp(pid.distanceIntegral + distanceError * dt, -0.16, 0.16) : 0;
+    pid.offsetIntegral = 0;
+    pid.distanceIntegral = 0;
 
     pid.distancePrev = distanceError;
     pid.offsetPrev = offsetError;
 
     let angularTarget = 0;
-    if (pid.curveInPlace) {
-      const curveDemand = smoothstep(curveExit, 0.72, absOffset);
-      const damping = clamp(1 - Math.max(0, -Math.sign(offsetError || 1) * lateralVelocity) * 0.045, 0.40, 0.86);
-      angularTarget = -Math.sign(offsetError || 1) * maxAngular * clamp(0.26 + curveDemand * 0.48, 0, 0.74) * damping;
-    } else if (nowMs < pid.angularBrakeUntil && absOffset < 0.045) {
-      angularTarget = 0;
-    } else if (absOffset > offsetDeadband) {
-      const kp = number(pidInputs.angularKp, 2.15);
-      const ki = number(pidInputs.angularKi, 0.00);
-      const kd = number(pidInputs.angularKd, 0.18);
-      const normalized = kp * offsetError + ki * pid.offsetIntegral + kd * lateralVelocity;
-      const authority = smoothstep(offsetDeadband, 0.34, absOffset);
-      angularTarget = -maxAngular * clamp(normalized, -1, 1) * clamp(0.28 + authority * 0.72, 0, 1);
-      const minTurn = maxAngular * clamp(0.035 + authority * 0.07, 0, 0.105);
-      if (Math.abs(angularTarget) < minTurn) {
-        angularTarget = -Math.sign(offsetError || 1) * minTurn;
+    if (absOffset > offsetDeadband) {
+      const kp = number(pidInputs.angularKp, 1.55);
+      const kd = number(pidInputs.angularKd, 0.34);
+      const normalized = kp * offsetError + kd * lateralVelocity;
+      const authority = smoothstep(offsetDeadband, 0.42, absOffset);
+      const limit = pid.curveInPlace
+        ? maxAngular * clamp(0.22 + authority * 0.45, 0, 0.67)
+        : maxAngular * clamp(0.16 + authority * 0.58, 0, 0.74);
+      angularTarget = -clamp(normalized, -1, 1) * limit;
+      if (Math.sign(angularTarget) === Math.sign(pid.lastAngular) && Math.abs(angularTarget) < Math.abs(pid.lastAngular) * 0.35) {
+        angularTarget = pid.lastAngular * 0.35;
       }
     }
 
     let linearTarget = 0;
-    if (!pid.curveInPlace) {
-      const alignmentGate = 1 - smoothstep(0.28, 0.72, absOffset);
-      const angularGate = 1 - smoothstep(maxAngular * 0.62, maxAngular * 1.00, Math.abs(pid.lastAngular));
+    if (nowMs >= pid.chillStopUntil) {
+      const alignmentGate = 1 - smoothstep(0.16, 0.46, absOffset);
+      const angularGate = 1 - smoothstep(maxAngular * 0.28, maxAngular * 0.72, Math.abs(pid.lastAngular));
       const gate = clamp(alignmentGate * angularGate, 0, 1);
       if (distanceError > distanceDeadband) {
-        const kp = number(pidInputs.linearKp, 3.20);
-        const ki = number(pidInputs.linearKi, 0.00);
-        const kd = number(pidInputs.linearKd, 0.10);
-        const normalized = kp * distanceError + ki * pid.distanceIntegral - kd * closingTooFast;
+        const kp = number(pidInputs.linearKp, 1.85);
+        const kd = number(pidInputs.linearKd, 0.20);
+        const normalized = kp * distanceError - kd * closingTooFast;
         linearTarget = maxLinear * clamp(normalized, 0, 1) * gate;
-      } else if (distanceError < -distanceDeadband * 1.5 && absOffset < 0.18) {
+      } else if (distanceError < -distanceDeadband * 1.7 && absOffset < 0.14) {
         const reverseProfile = smoothstep(distanceDeadband * 1.5, 0.14, -distanceError);
-        linearTarget = -maxLinear * 0.18 * reverseProfile;
+        linearTarget = -maxLinear * 0.12 * reverseProfile;
       }
     }
 
-    const angularLimit = pid.curveInPlace
-      ? maxAngular * 0.90
-      : maxAngular * clamp(0.18 + smoothstep(offsetDeadband, 0.34, absOffset) * 0.82, 0, 1);
-    angularTarget = clamp(angularTarget, -angularLimit, angularLimit);
-    if (absOffset < 0.026 && Math.abs(lateralVelocity) < 0.32) angularTarget = 0;
-    if (Math.abs(distanceError) < 0.009 && Math.abs(pid.sizeVelocity) < 0.10) linearTarget = 0;
+    if (absOffset < 0.035 && Math.abs(lateralVelocity) < 0.22) angularTarget = 0;
+    if (Math.abs(distanceError) < 0.012 && Math.abs(pid.sizeVelocity) < 0.09) linearTarget = 0;
 
     if (nowMs < pid.chillStopUntil) {
       pid.lastAngular = 0;
       pid.lastLinear = 0;
+      pid.controlMode = 'anti-ondulazione stop';
       setText(curveModeEl, 'chill stop');
       return { linear: 0, angular: 0, mode: 'anti-ondulazione stop' };
     }
     if (nowMs < pid.chillForwardUntil) {
       const settle = smoothstep(pid.chillStopUntil, pid.chillForwardUntil, nowMs);
-      angularTarget *= 0.18;
-      linearTarget = Math.max(linearTarget, maxLinear * (0.055 + settle * 0.070));
-      linearTarget = Math.min(linearTarget, maxLinear * 0.14);
+      angularTarget *= 0.22;
+      linearTarget = Math.max(linearTarget, maxLinear * (0.035 + settle * 0.055));
+      linearTarget = Math.min(linearTarget, maxLinear * 0.10);
     }
 
     let angularStep;
     if (Math.sign(angularTarget) !== Math.sign(pid.lastAngular)) {
-      angularStep = maxAngular * dt * 16.0;
+      angularStep = maxAngular * dt * 7.5;
     } else if (Math.abs(angularTarget) < Math.abs(pid.lastAngular)) {
-      angularStep = maxAngular * dt * 18.0;
+      angularStep = maxAngular * dt * 10.0;
     } else {
-      angularStep = maxAngular * dt * (pid.curveInPlace ? 9.0 : 10.0);
+      angularStep = maxAngular * dt * (pid.curveInPlace ? 6.2 : 7.4);
     }
 
-    const linearAccel = maxLinear * dt * 7.5;
-    const linearBrake = maxLinear * dt * 11.0;
+    const linearAccel = maxLinear * dt * 3.4;
+    const linearBrake = maxLinear * dt * 6.2;
     const linearStep = Math.abs(linearTarget) < Math.abs(pid.lastLinear) ? linearBrake : linearAccel;
     const angular = clamp(angularTarget, pid.lastAngular - angularStep, pid.lastAngular + angularStep);
     const linear = clamp(linearTarget, pid.lastLinear - linearStep, pid.lastLinear + linearStep);
     pid.lastAngular = angular;
     pid.lastLinear = linear;
-    setText(curveModeEl, pid.curveInPlace ? 'attiva' : 'spenta');
-    const mode = nowMs < pid.chillForwardUntil ? 'anti-ondulazione avanti chill' : (pid.curveInPlace ? 'curva sul posto' : gateMode(absOffset, Math.abs(angular)));
+    const mode = nowMs < pid.chillForwardUntil
+      ? 'anti-ondulazione avanti chill'
+      : (pid.curveInPlace ? 'curva smorzata' : (stableNow ? 'stabile' : gateMode(absOffset, Math.abs(angular))));
+    pid.controlMode = mode || 'tracking';
+    setText(curveModeEl, pid.controlMode);
     return { linear, angular, mode };
   }
 
@@ -666,9 +686,10 @@
     const streamIsVideo = /^(rtsp|rtmp):\/\//i.test(streamUrl) || /\/(stream|mjpeg|mjpg|video|video_feed)\b/i.test(streamUrl) || /[?&]action=stream/i.test(streamUrl);
     const baseDetectWidth = Math.max(0, Math.min(1920, number(detectWidthInput, 360)));
     const lastSide = Number(lastTag?.side || 0);
-    const needsFarSearch = pid.missedFrames >= 2 || (lastSide > 0 && lastSide < 26);
+    const farPulse = pid.missedFrames >= 7 && pid.missedFrames % 5 === 2;
+    const needsFarSearch = farPulse || (lastSide > 0 && lastSide < 18 && pid.missedFrames >= 2);
     const adaptiveDetectWidth = acquireTarget
-      ? Math.max(baseDetectWidth, 640)
+      ? Math.max(baseDetectWidth, 520)
       : (needsFarSearch ? Math.max(baseDetectWidth, 900) : baseDetectWidth);
     return {
       stream_url: streamUrl,
@@ -1010,6 +1031,7 @@
   loadTrackingSettings().finally(() => {
     updatePresetActiveState();
     updateTargetSizeLabel();
+    startStatusPolling();
   });
   setText(followStateEl, 'pronto');
   drawGuide();

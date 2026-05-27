@@ -6,10 +6,15 @@
   <p>Flusso video live, configurazione dei parametri di rilevamento ottico e diagnostica del regolatore PID.</p>
 </div>
 
-<div id="trackingPauseAlert" class="alert warning tracking-ready-alert" style="margin-bottom: 20px; {% if not robot_warning %}display: none;{% endif %}">
-  <span class="mono">Il mir è in pausa</span>
-  <button class="btn success ready small" id="trackingReadyBtn" type="button">Ready</button>
-  <span id="trackingReadyState" class="mono">{% if robot_status %}{{ robot_status.state_text or '' }}{% endif %}</span>
+<div id="trackingPauseAlert" class="alert error tracking-ready-alert" style="margin-bottom: 20px; {% if not robot_warning %}display: none;{% endif %}">
+  <div style="display: flex; align-items: center; gap: 10px;">
+    <span class="pulse-dot"></span>
+    <strong style="font-weight: 700; letter-spacing: 0.02em;">Errore critico: il MiR è in pausa</strong>
+  </div>
+  <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+    <span id="trackingReadyState" class="mono small" style="opacity: 0.85; font-size: 0.8rem;">{% if robot_status %}{{ robot_status.state_text or '' }}{% endif %}</span>
+    <button class="btn success ready small" id="trackingReadyBtn" type="button" style="border-width: 2px;">Ripristina Ready</button>
+  </div>
 </div>
 
 <!-- TOP PANEL: Stream & Commands -->
@@ -159,10 +164,10 @@
         <div>
           <label style="margin-bottom: 8px; display: block;">Frequenza Fps Rilevamento</label>
           <div class="actions" style="justify-content: flex-start; gap: 8px; padding: 0;">
-            <button class="btn tracking-preset small" data-hz="60" data-detect-width="900" data-linear="1.20" data-angular="1.20" type="button">60 FPS</button>
-            <button class="btn tracking-preset small" data-hz="90" data-detect-width="640" data-linear="1.50" data-angular="1.50" type="button">90 FPS</button>
-            <button class="btn tracking-preset small" data-hz="120" data-detect-width="480" data-linear="1.80" data-angular="1.80" type="button">120 FPS</button>
-            <button class="btn tracking-preset active small" data-hz="160" data-detect-width="360" data-linear="2.20" data-angular="2.40" type="button">TURBO</button>
+            <button class="btn tracking-preset small" data-hz="60" data-detect-width="900" data-linear="1.00" data-angular="1.00" type="button">60 FPS</button>
+            <button class="btn tracking-preset small" data-hz="90" data-detect-width="640" data-linear="1.20" data-angular="1.25" type="button">90 FPS</button>
+            <button class="btn tracking-preset small" data-hz="120" data-detect-width="480" data-linear="1.35" data-angular="1.45" type="button">120 FPS</button>
+            <button class="btn tracking-preset active small" data-hz="160" data-detect-width="360" data-linear="1.50" data-angular="1.65" type="button">TURBO</button>
           </div>
         </div>
         
@@ -171,13 +176,13 @@
           <label style="margin-bottom: 8px; display: block; color: var(--accent-primary);">Guadagni PID Angolare (Rotazione)</label>
           <div class="pid-input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
             <label>Kp (Prop)
-              <input id="trackingPidAngularKp" type="number" min="0" max="10" step="0.05" value="2.60" class="mono" style="margin-top: 4px;">
+              <input id="trackingPidAngularKp" type="number" min="0" max="10" step="0.05" value="1.55" class="mono" style="margin-top: 4px;">
             </label>
             <label>Ki (Int)
               <input id="trackingPidAngularKi" type="number" min="0" max="2" step="0.01" value="0.00" class="mono" style="margin-top: 4px;">
             </label>
             <label>Kd (Der)
-              <input id="trackingPidAngularKd" type="number" min="0" max="5" step="0.01" value="0.08" class="mono" style="margin-top: 4px;">
+              <input id="trackingPidAngularKd" type="number" min="0" max="5" step="0.01" value="0.34" class="mono" style="margin-top: 4px;">
             </label>
           </div>
         </div>
@@ -187,13 +192,13 @@
           <label style="margin-bottom: 8px; display: block; color: var(--accent-primary);">Guadagni PID Lineare (Avanti/Indietro)</label>
           <div class="pid-input-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
             <label>Kp (Prop)
-              <input id="trackingPidLinearKp" type="number" min="0" max="10" step="0.05" value="3.20" class="mono" style="margin-top: 4px;">
+              <input id="trackingPidLinearKp" type="number" min="0" max="10" step="0.05" value="1.85" class="mono" style="margin-top: 4px;">
             </label>
             <label>Ki (Int)
               <input id="trackingPidLinearKi" type="number" min="0" max="2" step="0.01" value="0.00" class="mono" style="margin-top: 4px;">
             </label>
             <label>Kd (Der)
-              <input id="trackingPidLinearKd" type="number" min="0" max="5" step="0.01" value="0.10" class="mono" style="margin-top: 4px;">
+              <input id="trackingPidLinearKd" type="number" min="0" max="5" step="0.01" value="0.20" class="mono" style="margin-top: 4px;">
             </label>
           </div>
         </div>
@@ -210,5 +215,5 @@
 
 </div>
 
-<script src="/static/tracking.js?v=pid-rosbridge-sourcefast-32"></script>
+<script src="/static/tracking.js?v=pid-rosbridge-stable-34"></script>
 {% endblock %}

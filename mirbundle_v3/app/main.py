@@ -182,6 +182,30 @@ async def robot_ready_api():
         return {'ok': False, 'error': str(exc)}
 
 
+@app.get('/api/robot/status')
+async def robot_status_api():
+    try:
+        client = get_client()
+        status = await client.get_status()
+        if not isinstance(status, dict):
+            status = {}
+        state_text = str(status.get('state_text', '') or '')
+        state_id = status.get('state_id', 0)
+        is_paused = any(token in state_text.lower() for token in ('pause', 'paused', 'protective', 'error', 'emergency', 'abort')) or state_id in (4, 10)
+        return {
+            'ok': True,
+            'state_text': state_text,
+            'state_id': state_id,
+            'is_paused': is_paused
+        }
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        err_msg = str(exc) or type(exc).__name__
+        return {'ok': False, 'error': err_msg}
+
+
+
 @app.get('/missions', response_class=HTMLResponse)
 async def missions_page(request: Request, group_id: str = ''):
     groups = []
@@ -949,6 +973,7 @@ class _AprilTagLiveDetector:
     def _loop(self, url: str) -> None:
         last_frame_id = 0
         previous_tag: dict[str, Any] | None = None
+        live_misses = 0
         while True:
             with self.ready:
                 if not self.running or self.url != url:
@@ -967,14 +992,18 @@ class _AprilTagLiveDetector:
                     frame,
                     target_id=config.get('target_id'),
                     target_dictionary=str(config.get('target_dictionary') or 'APRILTAG_25h9'),
-                    previous_tag=previous_tag or config.get('previous_tag'),
+                    previous_tag=(previous_tag or config.get('previous_tag')) if live_misses <= 24 else None,
                     acquire_target=False,
                     max_detect_width=int(config.get('max_detect_width') or 360),
                     allow_dictionary_fallback=False,
-                    far_search=bool(config.get('far_search', False)),
+                    far_search=bool(config.get('far_search', False) and (previous_tag is None or live_misses >= 12)),
                 )
                 detected = time.perf_counter()
-                previous_tag = detection.get('tag') or previous_tag
+                if detection.get('tag'):
+                    previous_tag = detection.get('tag')
+                    live_misses = 0
+                else:
+                    live_misses += 1
                 detection['perf'] = {
                     'load_ms': 0.0,
                     'detect_ms': round((detected - started) * 1000, 1),
@@ -1086,7 +1115,7 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
                 frame,
                 target_id,
                 target_dictionary,
-                previous_tag if missed_frames <= 2 else None,
+                previous_tag if missed_frames <= 10 else None,
                 acquire_target,
                 max_detect_width,
                 (not target_dictionary) and (acquire_target or (target_id is None and missed_frames >= 2)),
