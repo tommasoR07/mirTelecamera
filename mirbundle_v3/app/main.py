@@ -33,6 +33,15 @@ DEFAULT_TRACKING_SETTINGS: dict[str, Any] = {
     'maxAngular': '1.50',
     'pidHz': '160',
     'detectWidth': '360',
+    'linearKp': '1.85',
+    'linearKi': '0.00',
+    'linearKd': '0.20',
+    'angularKp': '1.55',
+    'angularKi': '0.00',
+    'angularKd': '0.34',
+    'contrastAlpha': '1.0',
+    'brightnessBeta': '0.0',
+    'claheClipLimit': '2.0',
 }
 
 _CV_CACHE: tuple[Any, Any] | None = None
@@ -683,7 +692,7 @@ def _capture_frame_from_stream(url: str) -> bytes:
 
 
 def _capture_raw_frame_from_stream(url: str, min_frame_id: int = 0):
-    return _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.006, min_frame_id=min_frame_id)
+    return _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.080, min_frame_id=min_frame_id)
 
 
 def _stream_frame_meta() -> dict[str, Any]:
@@ -793,6 +802,15 @@ def _detect_apriltags_from_frame(
         detect_height = max(1, int(round(detect_base_height / scale)))
         detect_frame = cv2.resize(detect_frame, (max_detect_width, detect_height), interpolation=cv2.INTER_AREA)
     gray = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2GRAY)
+    settings = _load_tracking_settings()
+    contrast_alpha = float(settings.get('contrastAlpha', 1.0))
+    brightness_beta = float(settings.get('brightnessBeta', 0.0))
+    clahe_clip_limit = float(settings.get('claheClipLimit', 2.0))
+    if abs(contrast_alpha - 1.0) > 0.01 or abs(brightness_beta) > 0.01:
+        gray = cv2.convertScaleAbs(gray, alpha=contrast_alpha, beta=brightness_beta)
+    if clahe_clip_limit > 0.01:
+        clahe = cv2.createCLAHE(clipLimit=clahe_clip_limit, tileGridSize=(8, 8))
+        gray = clahe.apply(gray)
 
     if not hasattr(cv2, 'aruco'):
         raise RuntimeError('Modulo AprilTag non disponibile. Installa: pip install opencv-contrib-python-headless')
@@ -949,11 +967,11 @@ class _AprilTagLiveDetector:
             self.thread = threading.Thread(target=self._loop, args=(url,), daemon=True)
             self.thread.start()
 
-    def latest(self, max_age: float = 0.12, wait_seconds: float = 0.018) -> dict[str, Any] | None:
+    def latest(self, min_frame_id: int = 0, max_age: float = 0.15, wait_seconds: float = 0.040) -> dict[str, Any] | None:
         deadline = time.time() + wait_seconds
         with self.ready:
             while True:
-                if self.result is not None and time.time() - self.result_ts <= max_age:
+                if self.result is not None and self.result_frame_id > min_frame_id and time.time() - self.result_ts <= max_age:
                     return self.result.copy()
                 remaining = deadline - time.time()
                 if remaining <= 0:
@@ -980,7 +998,7 @@ class _AprilTagLiveDetector:
                     return
                 config = self.config.copy()
             try:
-                frame = _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.010, min_frame_id=last_frame_id)
+                frame = _STREAM_FRAME_CACHE.get_frame(url, wait_seconds=0.100, min_frame_id=last_frame_id)
                 with _STREAM_FRAME_CACHE.lock:
                     current_frame_id = _STREAM_FRAME_CACHE.frame_id
                 if current_frame_id == last_frame_id:
@@ -992,11 +1010,11 @@ class _AprilTagLiveDetector:
                     frame,
                     target_id=config.get('target_id'),
                     target_dictionary=str(config.get('target_dictionary') or 'APRILTAG_25h9'),
-                    previous_tag=(previous_tag or config.get('previous_tag')) if live_misses <= 24 else None,
+                    previous_tag=previous_tag if live_misses == 0 else None,
                     acquire_target=False,
                     max_detect_width=int(config.get('max_detect_width') or 360),
                     allow_dictionary_fallback=False,
-                    far_search=bool(config.get('far_search', False) and (previous_tag is None or live_misses >= 12)),
+                    far_search=bool(config.get('far_search', False) and live_misses >= 2),
                 )
                 detected = time.perf_counter()
                 if detection.get('tag'):
@@ -1062,8 +1080,579 @@ def _compute_tag_tracking_command(tag: dict[str, Any] | None, width: int, height
     }
 
 
+_BACKEND_TRACKING_ACTIVE = False
+_BACKEND_TRACKING_TASK: asyncio.Task | None = None
+_ROS_BRIDGE_CLIENT: _ROSBridgeClient | None = None
+_LAST_TRACKING_STATUS: dict[str, Any] = {'tracking_active': False}
+_PID_CONTROLLER = _PIDController()
+
+
+class _ROSBridgeClient:
+    def __init__(self, host: str) -> None:
+        self.host = host
+        self.joystick_token = None
+        self.ws = None
+        self.running = False
+        self.thread = None
+        self.loop = None
+        self.lock = threading.Lock()
+
+    async def _connect_and_loop(self):
+        import websockets
+        from urllib.parse import urlparse
+        
+        clean_host = self.host.strip()
+        if not clean_host.startswith(('http://', 'https://', 'ws://', 'wss://')):
+            clean_host = f"http://{clean_host}"
+        try:
+            parsed = urlparse(clean_host)
+            hostname = parsed.hostname or self.host
+        except Exception:
+            hostname = self.host
+            
+        ws_url = f"ws://{hostname}:9090"
+        
+        while self.running:
+            try:
+                async with websockets.connect(ws_url, open_timeout=3.0) as ws:
+                    with self.lock:
+                        self.ws = ws
+                    await ws.send(json.dumps({
+                        "op": "advertise",
+                        "topic": "/joystick_vel",
+                        "type": "mirMsgs/JoystickVel"
+                    }))
+                    await ws.send(json.dumps({
+                        "op": "call_service",
+                        "service": "/mirsupervisor/setRobotState",
+                        "type": "mirSupervisor/SetState",
+                        "args": {
+                            "robotState": 11,
+                            "web_session_id": "MIRITISCUNEO"
+                        },
+                        "id": f"tracking_backend_{int(time.time())}"
+                    }))
+                    async for message in ws:
+                        if not self.running:
+                            break
+                        try:
+                            data = json.loads(message)
+                            token = data.get("values", {}).get("joystick_token") or data.get("result", {}).get("joystick_token")
+                            if token:
+                                with self.lock:
+                                    self.joystick_token = token
+                        except Exception:
+                            pass
+            except Exception:
+                with self.lock:
+                    self.ws = None
+                    self.joystick_token = None
+                await asyncio.sleep(1.0)
+
+    def start(self) -> None:
+        with self.lock:
+            if self.running:
+                return
+            self.running = True
+            self.joystick_token = None
+            self.ws = None
+            
+        def thread_target():
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.loop.run_until_complete(self._connect_and_loop())
+            self.loop.close()
+            
+        self.thread = threading.Thread(target=thread_target, daemon=True)
+        self.thread.start()
+
+    def stop(self) -> None:
+        with self.lock:
+            if not self.running:
+                return
+            self.running = False
+            
+        if self.loop and self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.loop.stop)
+            
+        if self.thread:
+            try:
+                self.thread.join(timeout=1.0)
+            except Exception:
+                pass
+            self.thread = None
+        self.ws = None
+        self.joystick_token = None
+
+    async def _send_velocity_cmd(self, linear: float, angular: float):
+        ws = self.ws
+        token = self.joystick_token
+        if ws and token:
+            msg = {
+                "op": "publish",
+                "topic": "/joystick_vel",
+                "msg": {
+                    "joystick_token": token,
+                    "speed_command": {
+                        "linear": { "x": linear, "y": 0.0, "z": 0.0 },
+                        "angular": { "x": 0.0, "y": 0.0, "z": angular }
+                    }
+                }
+            }
+            await ws.send(json.dumps(msg))
+
+    def publish_velocity(self, linear: float, angular: float) -> bool:
+        with self.lock:
+            if not self.running or not self.ws or not self.joystick_token:
+                return False
+            loop = self.loop
+        if loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(self._send_velocity_cmd(linear, angular), loop)
+            return True
+        return False
+
+
+class _PIDController:
+    def __init__(self) -> None:
+        self.last_ts = 0.0
+        self.filtered_offset = None
+        self.filtered_size = None
+        self.offset_velocity = 0.0
+        self.size_velocity = 0.0
+        self.last_offset_sign = 0
+        self.last_oscillation_at = 0.0
+        self.oscillation_score = 0.0
+        self.chill_stop_until = 0.0
+        self.chill_forward_until = 0.0
+        self.stable_frames = 0
+        self.curve_in_place = False
+        self.last_linear = 0.0
+        self.last_angular = 0.0
+        self.missed_frames = 0
+        self.visible_frames = 0
+        self.control_mode = "idle"
+        self.last_tag = None
+
+    def reset(self) -> None:
+        self.last_ts = 0.0
+        self.filtered_offset = None
+        self.filtered_size = None
+        self.offset_velocity = 0.0
+        self.size_velocity = 0.0
+        self.last_offset_sign = 0
+        self.last_oscillation_at = 0.0
+        self.oscillation_score = 0.0
+        self.chill_stop_until = 0.0
+        self.chill_forward_until = 0.0
+        self.stable_frames = 0
+        self.curve_in_place = False
+        self.last_linear = 0.0
+        self.last_angular = 0.0
+        self.missed_frames = 0
+        self.visible_frames = 0
+        self.control_mode = "idle"
+        self.last_tag = None
+
+    def compute(self, size_ratio: float | None, offset_x: float | None, settings: dict[str, Any]) -> tuple[float, float, str]:
+        now = time.perf_counter()
+        now_ms = now * 1000.0
+        
+        dt = min(0.10, max(0.008, now - self.last_ts)) if self.last_ts > 0.0 else 0.016
+        self.last_ts = now
+        
+        if size_ratio is None or offset_x is None:
+            return 0.0, 0.0, "idle"
+            
+        desired = float(settings.get('targetSize', 32)) / 100.0
+        max_linear = min(float(settings.get('maxLinear', 1.5)), 1.65)
+        max_angular = min(float(settings.get('maxAngular', 1.65)), 1.85)
+        
+        linear_kp = float(settings.get('linearKp', 1.85))
+        linear_kd = float(settings.get('linearKd', 0.20))
+        angular_kp = float(settings.get('angularKp', 1.55))
+        angular_kd = float(settings.get('angularKd', 0.34))
+        
+        offset_alpha = min(0.78, max(0.38, dt / (0.010 + dt)))
+        size_alpha = min(0.62, max(0.24, dt / (0.022 + dt)))
+        
+        previous_offset = self.filtered_offset if self.filtered_offset is not None else offset_x
+        previous_size = self.filtered_size if self.filtered_size is not None else size_ratio
+        
+        self.filtered_offset = previous_offset + (offset_x - previous_offset) * offset_alpha
+        self.filtered_size = previous_size + (size_ratio - previous_size) * size_alpha
+        
+        raw_offset_velocity = (self.filtered_offset - previous_offset) / dt
+        raw_size_velocity = (self.filtered_size - previous_size) / dt
+        
+        velocity_alpha = min(0.58, max(0.18, dt / (0.030 + dt)))
+        self.offset_velocity += (raw_offset_velocity - self.offset_velocity) * velocity_alpha
+        self.size_velocity += (raw_size_velocity - self.size_velocity) * velocity_alpha
+        
+        prediction_lead = min(0.028, max(0.010, 0.010 + dt * 0.45))
+        predicted_offset = self.filtered_offset + self.offset_velocity * prediction_lead
+        offset_error = min(1.0, max(-1.0, predicted_offset))
+        distance_error = desired - self.filtered_size
+        
+        offset_deadband = 0.040
+        distance_deadband = 0.014
+        abs_offset = abs(offset_error)
+        abs_distance = abs(distance_error)
+        
+        offset_sign = 1 if offset_error > offset_deadband else (-1 if offset_error < -offset_deadband else 0)
+        sign_flip = offset_sign != 0 and self.last_offset_sign != 0 and offset_sign != self.last_offset_sign
+        fast_flip = sign_flip and (now_ms - self.last_oscillation_at < 760.0)
+        
+        if sign_flip and abs(self.last_angular) > max_angular * 0.08:
+            self.oscillation_score = min(6.0, self.oscillation_score + (1.3 if fast_flip else 0.8))
+            if self.oscillation_score >= 1.6:
+                self.chill_stop_until = now_ms + 420.0
+                self.chill_forward_until = now_ms + 1550.0
+        elif not fast_flip and (now_ms - self.last_oscillation_at > 900.0):
+            self.oscillation_score = max(0.0, self.oscillation_score - 0.45)
+            
+        if sign_flip:
+            self.last_oscillation_at = now_ms
+        if offset_sign != 0:
+            self.last_offset_sign = offset_sign
+            
+        lateral_velocity = self.offset_velocity
+        distance_velocity = -self.size_velocity
+        closing_too_fast = max(0.0, -distance_velocity) if distance_error > 0 else max(0.0, distance_velocity)
+        
+        stable_now = abs_offset < 0.075 and abs(lateral_velocity) < 0.28
+        self.stable_frames = min(40, self.stable_frames + 1) if stable_now else 0
+        
+        curve_enter = 0.30
+        curve_exit = 0.16
+        self.curve_in_place = abs_offset > curve_enter or (self.curve_in_place and abs_offset > curve_exit)
+        
+        angular_target = 0.0
+        if abs_offset > offset_deadband:
+            normalized = angular_kp * offset_error + angular_kd * lateral_velocity
+            t = min(1.0, max(0.0, (abs_offset - offset_deadband) / (0.42 - offset_deadband)))
+            authority = t * t * (3.0 - 2.0 * t)
+            
+            if self.curve_in_place:
+                limit = max_angular * min(0.67, max(0.0, 0.22 + authority * 0.45))
+            else:
+                limit = max_angular * min(0.74, max(0.0, 0.16 + authority * 0.58))
+            angular_target = -min(1.0, max(-1.0, normalized)) * limit
+            if (angular_target > 0) == (self.last_angular > 0) and abs(angular_target) < abs(self.last_angular) * 0.35:
+                angular_target = self.last_angular * 0.35
+                
+        linear_target = 0.0
+        if now_ms >= self.chill_stop_until:
+            t_align = min(1.0, max(0.0, (abs_offset - 0.16) / 0.30))
+            alignment_gate = 1.0 - (t_align * t_align * (3.0 - 2.0 * t_align))
+            
+            t_ang = min(1.0, max(0.0, (abs(self.last_angular) - max_angular * 0.28) / (max_angular * 0.44)))
+            angular_gate = 1.0 - (t_ang * t_ang * (3.0 - 2.0 * t_ang))
+            
+            gate = min(1.0, max(0.0, alignment_gate * angular_gate))
+            
+            if distance_error > distance_deadband:
+                normalized = linear_kp * distance_error - linear_kd * closing_too_fast
+                linear_target = max_linear * min(1.0, max(0.0, normalized)) * gate
+            elif distance_error < -distance_deadband * 1.7 and abs_offset < 0.14:
+                t_rev = min(1.0, max(0.0, (-distance_error - distance_deadband * 1.5) / (0.14 - distance_deadband * 1.5)))
+                reverse_profile = t_rev * t_rev * (3.0 - 2.0 * t_rev)
+                linear_target = -max_linear * 0.12 * reverse_profile
+                
+        if abs_offset < 0.035 and abs(lateral_velocity) < 0.22:
+            angular_target = 0.0
+        if abs_distance < 0.012 and abs(self.size_velocity) < 0.09:
+            linear_target = 0.0
+            
+        if now_ms < self.chill_stop_until:
+            self.last_angular = 0.0
+            self.last_linear = 0.0
+            self.control_mode = "anti-ondulazione stop"
+            return 0.0, 0.0, self.control_mode
+            
+        if now_ms < self.chill_forward_until:
+            t_settle = min(1.0, max(0.0, (now_ms - self.chill_stop_until) / 1130.0))
+            settle = t_settle * t_settle * (3.0 - 2.0 * t_settle)
+            angular_target *= 0.22
+            linear_target = max(linear_target, max_linear * (0.035 + settle * 0.055))
+            linear_target = min(linear_target, max_linear * 0.10)
+            
+        if (angular_target > 0) != (self.last_angular > 0):
+            angular_step = max_angular * dt * 7.5
+        elif abs(angular_target) < abs(self.last_angular):
+            angular_step = max_angular * dt * 10.0
+        else:
+            angular_step = max_angular * dt * (6.2 if self.curve_in_place else 7.4)
+            
+        linear_accel = max_linear * dt * 3.4
+        linear_brake = max_linear * dt * 6.2
+        linear_step = linear_brake if abs(linear_target) < abs(self.last_linear) else linear_accel
+        
+        angular = min(self.last_angular + angular_step, max(self.last_angular - angular_step, angular_target))
+        linear = min(self.last_linear + linear_step, max(self.last_linear - linear_step, linear_target))
+        
+        self.last_angular = angular
+        self.last_linear = linear
+        
+        if now_ms < self.chill_forward_until:
+            self.control_mode = "anti-ondulazione avanti chill"
+        elif self.curve_in_place:
+            self.control_mode = "curva smorzata"
+        elif stable_now:
+            self.control_mode = "stabile"
+        else:
+            if abs_offset > 0.18:
+                self.control_mode = "riallineamento"
+            elif abs(angular) > 0.18:
+                self.control_mode = "micro-correzione"
+            else:
+                self.control_mode = "tracking"
+                
+        return linear, angular, self.control_mode
+
+
+async def _backend_tracking_loop():
+    global _BACKEND_TRACKING_ACTIVE, _ROS_BRIDGE_CLIENT, _PID_CONTROLLER, _LAST_TRACKING_STATUS
+    settings = _load_tracking_settings()
+    host = settings.get('host') or db.get_settings().get('host', '')
+    if not host:
+        _BACKEND_TRACKING_ACTIVE = False
+        return
+        
+    _ROS_BRIDGE_CLIENT = _ROSBridgeClient(host)
+    _ROS_BRIDGE_CLIENT.start()
+    _PID_CONTROLLER.reset()
+    
+    # Wait for connection and joystick token
+    for _ in range(30):
+        if not _BACKEND_TRACKING_ACTIVE:
+            break
+        if _ROS_BRIDGE_CLIENT.joystick_token:
+            break
+        await asyncio.sleep(0.1)
+        
+    last_frame_id = 0
+    while _BACKEND_TRACKING_ACTIVE:
+        started = time.perf_counter()
+        settings = _load_tracking_settings()
+        
+        hz = max(10.0, min(180.0, float(settings.get('pidHz', 160))))
+        target_dt = 1.0 / hz
+        
+        url = settings.get('camera_stream_url', '').strip()
+        if not url:
+            await asyncio.sleep(0.05)
+            continue
+            
+        try:
+            frame = await asyncio.to_thread(_capture_raw_frame_from_stream, url, last_frame_id)
+            with _STREAM_FRAME_CACHE.lock:
+                current_frame_id = _STREAM_FRAME_CACHE.frame_id
+            last_frame_id = current_frame_id
+            
+            target_id = None
+            target_id_raw = settings.get('target_id')
+            if target_id_raw not in (None, '', 'null'):
+                try:
+                    target_id = int(target_id_raw)
+                except Exception:
+                    pass
+                    
+            detection = _detect_apriltags_from_frame(
+                frame,
+                target_id=target_id,
+                target_dictionary=str(settings.get('target_dictionary') or 'APRILTAG_25h9'),
+                previous_tag=_PID_CONTROLLER.last_tag if _PID_CONTROLLER.missed_frames == 0 else None,
+                acquire_target=False,
+                max_detect_width=int(settings.get('detectWidth', 360)),
+                allow_dictionary_fallback=False,
+                far_search=bool(settings.get('far_search') and _PID_CONTROLLER.missed_frames >= 2)
+            )
+            
+            tag = detection.get('tag')
+            if tag:
+                _PID_CONTROLLER.visible_frames += 1
+                _PID_CONTROLLER.missed_frames = 0
+                
+                desired_size_ratio = float(settings.get('targetSize', 32)) / 100.0
+                max_linear = float(settings.get('maxLinear', 1.5))
+                max_angular = float(settings.get('maxAngular', 1.65))
+                
+                command = _compute_tag_tracking_command(tag, detection['width'], detection['height'], desired_size_ratio, max_linear, max_angular)
+                linear, angular, mode = _PID_CONTROLLER.compute(command['size_ratio'], command['offset_x'], settings)
+                
+                _ROS_BRIDGE_CLIENT.publish_velocity(linear, angular)
+                
+                _LAST_TRACKING_STATUS = {
+                    'ok': True,
+                    'tag': tag,
+                    'command': {
+                        'linear': linear,
+                        'angular': angular,
+                        'suggestion': command['suggestion'],
+                        'offset_x': command['offset_x'],
+                        'size_ratio': command['size_ratio'],
+                        'mode': mode
+                    },
+                    'perf': {
+                        'detect_ms': round((time.perf_counter() - started) * 1000, 1),
+                        'total_ms': round((time.perf_counter() - started) * 1000, 1),
+                        'frame_id': current_frame_id,
+                        'frame_age_ms': round((time.time() - _STREAM_FRAME_CACHE.last_frame_ts) * 1000, 1) if _STREAM_FRAME_CACHE.last_frame_ts else 0.0
+                    },
+                    'missed_frames': 0,
+                    'tracking_active': True,
+                    'rosbridge_connected': bool(_ROS_BRIDGE_CLIENT.ws and _ROS_BRIDGE_CLIENT.joystick_token)
+                }
+                
+                _PID_CONTROLLER.last_tag = {
+                    'x': tag.get('x'),
+                    'y': tag.get('y'),
+                    'w': tag.get('w'),
+                    'h': tag.get('h'),
+                    'cx': tag.get('cx'),
+                    'cy': tag.get('cy'),
+                    'side': tag.get('side'),
+                    'vx': 0.0,
+                    'vy': 0.0
+                }
+            else:
+                _PID_CONTROLLER.missed_frames += 1
+                _PID_CONTROLLER.visible_frames = 0
+                
+                if _PID_CONTROLLER.missed_frames <= 5:
+                    _PID_CONTROLLER.last_linear *= 0.85
+                    _PID_CONTROLLER.last_angular *= 0.85
+                    if abs(_PID_CONTROLLER.last_linear) < 0.012:
+                        _PID_CONTROLLER.last_linear = 0.0
+                    if abs(_PID_CONTROLLER.last_angular) < 0.012:
+                        _PID_CONTROLLER.last_angular = 0.0
+                    _ROS_BRIDGE_CLIENT.publish_velocity(_PID_CONTROLLER.last_linear, _PID_CONTROLLER.last_angular)
+                    mode = "ricerca coast"
+                else:
+                    _ROS_BRIDGE_CLIENT.publish_velocity(0.0, 0.0)
+                    _PID_CONTROLLER.reset()
+                    mode = "target perso"
+                    
+                _LAST_TRACKING_STATUS = {
+                    'ok': True,
+                    'tag': None,
+                    'command': {
+                        'linear': _PID_CONTROLLER.last_linear,
+                        'angular': _PID_CONTROLLER.last_angular,
+                        'suggestion': 'AprilTag non visibile',
+                        'offset_x': None,
+                        'size_ratio': None,
+                        'mode': mode
+                    },
+                    'perf': {
+                        'detect_ms': round((time.perf_counter() - started) * 1000, 1),
+                        'total_ms': round((time.perf_counter() - started) * 1000, 1),
+                        'frame_id': current_frame_id,
+                        'frame_age_ms': round((time.time() - _STREAM_FRAME_CACHE.last_frame_ts) * 1000, 1) if _STREAM_FRAME_CACHE.last_frame_ts else 0.0
+                    },
+                    'missed_frames': _PID_CONTROLLER.missed_frames,
+                    'tracking_active': True,
+                    'rosbridge_connected': bool(_ROS_BRIDGE_CLIENT.ws and _ROS_BRIDGE_CLIENT.joystick_token)
+                }
+                
+        except Exception as exc:
+            _PID_CONTROLLER.missed_frames += 1
+            _PID_CONTROLLER.visible_frames = 0
+            
+            if _PID_CONTROLLER.missed_frames <= 5:
+                _PID_CONTROLLER.last_linear *= 0.85
+                _PID_CONTROLLER.last_angular *= 0.85
+                if abs(_PID_CONTROLLER.last_linear) < 0.012:
+                    _PID_CONTROLLER.last_linear = 0.0
+                if abs(_PID_CONTROLLER.last_angular) < 0.012:
+                    _PID_CONTROLLER.last_angular = 0.0
+                if _ROS_BRIDGE_CLIENT:
+                    _ROS_BRIDGE_CLIENT.publish_velocity(_PID_CONTROLLER.last_linear, _PID_CONTROLLER.last_angular)
+                mode = "camera retry coast"
+            else:
+                if _ROS_BRIDGE_CLIENT:
+                    _ROS_BRIDGE_CLIENT.publish_velocity(0.0, 0.0)
+                _PID_CONTROLLER.reset()
+                mode = "camera error"
+                
+            _LAST_TRACKING_STATUS = {
+                'ok': False,
+                'error': str(exc),
+                'command': {
+                    'linear': _PID_CONTROLLER.last_linear,
+                    'angular': _PID_CONTROLLER.last_angular,
+                    'suggestion': 'errore camera',
+                    'offset_x': None,
+                    'size_ratio': None,
+                    'mode': mode
+                },
+                'perf': {
+                    'detect_ms': 0.0,
+                    'total_ms': 0.0,
+                    'frame_id': 0,
+                    'frame_age_ms': 0.0
+                },
+                'missed_frames': _PID_CONTROLLER.missed_frames,
+                'tracking_active': True,
+                'rosbridge_connected': bool(_ROS_BRIDGE_CLIENT and _ROS_BRIDGE_CLIENT.ws and _ROS_BRIDGE_CLIENT.joystick_token)
+            }
+            
+        elapsed = time.perf_counter() - started
+        sleep_time = max(0.001, target_dt - elapsed)
+        await asyncio.sleep(sleep_time)
+        
+    if _ROS_BRIDGE_CLIENT:
+        _ROS_BRIDGE_CLIENT.publish_velocity(0.0, 0.0)
+        _ROS_BRIDGE_CLIENT.stop()
+        _ROS_BRIDGE_CLIENT = None
+    _PID_CONTROLLER.reset()
+    _LAST_TRACKING_STATUS = {'tracking_active': False}
+
+
+@app.post('/api/tracking/start')
+async def tracking_start(payload: dict[str, Any] = Body(default_factory=dict)):
+    global _BACKEND_TRACKING_ACTIVE, _BACKEND_TRACKING_TASK
+    
+    settings = _load_tracking_settings()
+    settings.update({
+        'target_id': str(payload.get('target_id') or settings.get('target_id', '')).strip(),
+        'target_dictionary': str(payload.get('target_dictionary') or settings.get('target_dictionary', '')).strip(),
+    })
+    _save_tracking_settings(settings)
+    
+    if _BACKEND_TRACKING_ACTIVE:
+        return {'ok': True, 'message': 'Tracking già attivo sul backend.'}
+        
+    _BACKEND_TRACKING_ACTIVE = True
+    _BACKEND_TRACKING_TASK = asyncio.create_task(_backend_tracking_loop())
+    return {'ok': True, 'message': 'Inseguimento avviato sul backend.'}
+
+
+@app.post('/api/tracking/stop')
+async def tracking_stop():
+    global _BACKEND_TRACKING_ACTIVE, _BACKEND_TRACKING_TASK
+    if not _BACKEND_TRACKING_ACTIVE:
+        return {'ok': True, 'message': 'Tracking non attivo.'}
+        
+    _BACKEND_TRACKING_ACTIVE = False
+    if _BACKEND_TRACKING_TASK:
+        try:
+            await _BACKEND_TRACKING_TASK
+        except Exception:
+            pass
+        _BACKEND_TRACKING_TASK = None
+    return {'ok': True, 'message': 'Inseguimento fermato.'}
+
+
 @app.post('/api/tracking/apriltag-step')
 async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=dict)):
+    global _BACKEND_TRACKING_ACTIVE, _LAST_TRACKING_STATUS
+    if _BACKEND_TRACKING_ACTIVE:
+        return {
+            'ok': True,
+            **_LAST_TRACKING_STATUS
+        }
+        
     settings = db.get_settings()
     snapshot_url = str(payload.get('snapshot_url') or settings.get('camera_snapshot_url') or '').strip()
     stream_url = str(payload.get('stream_url') or settings.get('camera_stream_url') or '').strip()
@@ -1102,7 +1691,7 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
                 'max_detect_width': max_detect_width,
                 'far_search': far_search,
             })
-            live_detection = _APRILTAG_LIVE_DETECTOR.latest(max_age=0.10, wait_seconds=0.010)
+            live_detection = _APRILTAG_LIVE_DETECTOR.latest(min_frame_id=last_frame_id, max_age=0.15, wait_seconds=0.040)
         if live_detection is not None:
             detection = live_detection
             loaded = started
@@ -1111,16 +1700,16 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
             frame = await _load_tracking_frame(snapshot_url, stream_url, last_frame_id)
             loaded = time.perf_counter()
             detection = await asyncio.to_thread(
-                _detect_apriltags_from_frame,
-                frame,
-                target_id,
-                target_dictionary,
-                previous_tag if missed_frames <= 10 else None,
-                acquire_target,
-                max_detect_width,
-                (not target_dictionary) and (acquire_target or (target_id is None and missed_frames >= 2)),
-                far_search,
-            )
+                    _detect_apriltags_from_frame,
+                    frame,
+                    target_id,
+                    target_dictionary,
+                    previous_tag if missed_frames == 0 else None,
+                    acquire_target,
+                    max_detect_width,
+                    (not target_dictionary) and (acquire_target or (target_id is None and missed_frames >= 2)),
+                    far_search,
+                )
             detected = time.perf_counter()
         _TRACKER_STATE.update(target_id, detection['tag'])
         command = _compute_tag_tracking_command(detection['tag'], detection['width'], detection['height'], desired_size_ratio, max_linear, max_angular)
@@ -1147,13 +1736,16 @@ async def tracking_apriltag_step(payload: dict[str, Any] = Body(default_factory=
         }
 
 
-@app.post('/api/tracking/stop')
-async def tracking_stop():
-    return {'ok': True, 'message': 'Stop tracking gestito via joystick ROSBridge dal browser.'}
-
-
 @app.post('/api/tracking/reset')
 async def tracking_reset():
+    global _BACKEND_TRACKING_ACTIVE, _BACKEND_TRACKING_TASK
+    _BACKEND_TRACKING_ACTIVE = False
+    if _BACKEND_TRACKING_TASK:
+        try:
+            await _BACKEND_TRACKING_TASK
+        except Exception:
+            pass
+        _BACKEND_TRACKING_TASK = None
     _STREAM_FRAME_CACHE.stop()
     _APRILTAG_LIVE_DETECTOR.stop()
     _TRACKER_STATE.reset()

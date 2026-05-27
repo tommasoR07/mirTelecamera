@@ -15,6 +15,9 @@
   const turboOverride = $('rosTurboOverride');
   const joystick = $('rosJoystick');
   const joystickKnob = $('rosJoystickKnob');
+  const joystickStream = $('joystickStream');
+  const toggleStreamBtn = $('toggleJoystickStreamBtn');
+  const cameraStreamUrlInput = $('cameraStreamUrl');
   const STORAGE_KEY = 'mir.joystickLab.v1';
 
   let socket = null;
@@ -268,9 +271,46 @@
     updateLabels();
   }
 
+  let streamActive = false;
+
+  function toggleStream() {
+    if (!joystickStream || !toggleStreamBtn || !cameraStreamUrlInput) return;
+    const url = cameraStreamUrlInput.value.trim();
+    if (!url) {
+      toggleStreamBtn.textContent = 'Manca URL Stream';
+      return;
+    }
+    if (streamActive) {
+      joystickStream.removeAttribute('src');
+      joystickStream.onload = null;
+      joystickStream.onerror = null;
+      toggleStreamBtn.textContent = 'Connetti Telecamera';
+      toggleStreamBtn.classList.remove('danger');
+      toggleStreamBtn.classList.add('primary');
+      streamActive = false;
+    } else {
+      toggleStreamBtn.textContent = 'Connessione...';
+      const isMjpeg = /\/(stream|mjpeg|mjpg|video|video_feed)\b/i.test(url) || /[?&]action=stream/i.test(url);
+      joystickStream.onerror = () => {
+        toggleStreamBtn.textContent = 'Errore Connessione';
+        toggleStreamBtn.classList.remove('primary');
+        toggleStreamBtn.classList.add('danger');
+        streamActive = false;
+      };
+      joystickStream.onload = () => {
+        toggleStreamBtn.textContent = 'Disconnetti Telecamera';
+        toggleStreamBtn.classList.remove('primary');
+        toggleStreamBtn.classList.add('danger');
+        streamActive = true;
+      };
+      joystickStream.src = isMjpeg ? url : `${url}${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    }
+  }
+
   $('connectRosBtn')?.addEventListener('click', connect);
   $('disconnectRosBtn')?.addEventListener('click', () => disconnect(true));
   $('rosStopBtn')?.addEventListener('click', stopPublish);
+  toggleStreamBtn?.addEventListener('click', toggleStream);
   joystick?.addEventListener('pointerdown', startJoystick);
   joystick?.addEventListener('pointermove', moveJoystick);
   joystick?.addEventListener('pointerup', endJoystick);

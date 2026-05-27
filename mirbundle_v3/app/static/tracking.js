@@ -48,6 +48,12 @@
   const maxAngularInput = $('trackingAngularGain');
   const pidHzInput = $('trackingPidHz');
   const detectWidthInput = $('trackingDetectWidth');
+  const contrastInput = $('trackingContrast');
+  const contrastValue = $('trackingContrastValue');
+  const brightnessInput = $('trackingBrightness');
+  const brightnessValue = $('trackingBrightnessValue');
+  const claheInput = $('trackingClahe');
+  const claheValue = $('trackingClaheValue');
   const pidInputs = {
     linearKp: $('trackingPidLinearKp'),
     linearKi: $('trackingPidLinearKi'),
@@ -165,6 +171,15 @@
       maxAngular: maxAngularInput?.value || '1.50',
       pidHz: pidHzInput?.value || '160',
       detectWidth: detectWidthInput?.value || '360',
+      linearKp: pidInputs.linearKp?.value || '1.85',
+      linearKi: pidInputs.linearKi?.value || '0.00',
+      linearKd: pidInputs.linearKd?.value || '0.20',
+      angularKp: pidInputs.angularKp?.value || '1.55',
+      angularKi: pidInputs.angularKi?.value || '0.00',
+      angularKd: pidInputs.angularKd?.value || '0.34',
+      contrastAlpha: contrastInput?.value || '1.0',
+      brightnessBeta: brightnessInput?.value || '0.0',
+      claheClipLimit: claheInput?.value || '2.0',
     };
   }
 
@@ -174,7 +189,34 @@
     if (saved.maxAngular) maxAngularInput.value = saved.maxAngular;
     if (saved.pidHz) pidHzInput.value = saved.pidHz;
     if (saved.detectWidth) detectWidthInput.value = saved.detectWidth;
+    
+    if (saved.linearKp && pidInputs.linearKp) pidInputs.linearKp.value = saved.linearKp;
+    if (saved.linearKi && pidInputs.linearKi) pidInputs.linearKi.value = saved.linearKi;
+    if (saved.linearKd && pidInputs.linearKd) pidInputs.linearKd.value = saved.linearKd;
+    if (saved.angularKp && pidInputs.angularKp) pidInputs.angularKp.value = saved.angularKp;
+    if (saved.angularKi && pidInputs.angularKi) pidInputs.angularKi.value = saved.angularKi;
+    if (saved.angularKd && pidInputs.angularKd) pidInputs.angularKd.value = saved.angularKd;
+    
+    if (saved.contrastAlpha !== undefined && contrastInput) {
+      contrastInput.value = saved.contrastAlpha;
+      setText(contrastValue, saved.contrastAlpha);
+    }
+    if (saved.brightnessBeta !== undefined && brightnessInput) {
+      brightnessInput.value = saved.brightnessBeta;
+      setText(brightnessValue, saved.brightnessBeta);
+    }
+    if (saved.claheClipLimit !== undefined && claheInput) {
+      claheInput.value = saved.claheClipLimit;
+      setText(claheValue, saved.claheClipLimit);
+    }
     updatePresetActiveState();
+  }
+
+  function updateImageLabels() {
+    if (contrastInput) setText(contrastValue, contrastInput.value);
+    if (brightnessInput) setText(brightnessValue, brightnessInput.value);
+    if (claheInput) setText(claheValue, claheInput.value);
+    saveTrackingSettings(false);
   }
 
   function updateTargetSizeLabel() {
@@ -609,65 +651,30 @@
   function updateStats(data, renderUi = true) {
     if (!data || !data.ok) {
       const msg = data?.error || 'errore rilevamento AprilTag';
-      pid.missedFrames += 1;
-      pid.backendErrorFrames += 1;
-      pid.visibleFrames = 0;
       if (renderUi) {
-        const suffix = followEnabled ? ` | retry ${pid.missedFrames}` : '';
+        const suffix = followEnabled ? ` | retry ${data?.missed_frames || 0}` : '';
         setText(targetStateEl, `${msg}${suffix}`);
-        if (pid.backendErrorFrames > 8) {
-          setText(precisionEl, 'camera instabile');
-          setText(perfEl, 'retry camera');
-        }
-        if (pid.missedFrames % 3 === 1) drawGuide();
+        setText(precisionEl, 'perso');
       }
-      if (followEnabled && (pid.lastLinear !== 0 || pid.lastAngular !== 0)) {
-        publishVelocity(0, 0, 'camera retry');
-      }
-      resetTransientTrackingState();
+      if (data?.missed_frames % 3 === 1) drawGuide();
       return null;
     }
     const tag = data.tag || null;
     if (renderUi) drawTag(tag);
     if (!tag) {
-      pid.missedFrames += 1;
-      pid.visibleFrames = 0;
       if (renderUi) {
-        const suffix = followEnabled ? ` | ricerca ${pid.missedFrames}` : '';
+        const suffix = followEnabled ? ` | ricerca ${data?.missed_frames || 0}` : '';
         setText(targetStateEl, selectedTagId === null ? `nessun AprilTag rilevato${suffix}` : `AprilTag ID ${selectedTagId} non visibile${suffix}`);
         setText(precisionEl, 'perso');
         setText(curveModeEl, 'spenta');
       }
-      if (followEnabled && (pid.lastLinear !== 0 || pid.lastAngular !== 0)) {
-        publishVelocity(0, 0, 'target perso');
-      }
-      resetTransientTrackingState();
       return null;
     }
     lastSeenAt = performance.now();
-    pid.visibleFrames += 1;
-    pid.missedFrames = 0;
-    pid.backendErrorFrames = 0;
     const cmd = data.command || {};
     if (tag.dictionary) selectedTagDictionary = tag.dictionary;
-    const tagSeenAt = performance.now();
-    const tagDt = lastTagSampleAt ? clamp((tagSeenAt - lastTagSampleAt) / 1000, 0.006, 0.12) : 0.016;
-    const prevCx = Number(lastTag?.cx);
-    const prevCy = Number(lastTag?.cy);
-    const vx = Number.isFinite(prevCx) ? clamp((Number(tag.cx) - prevCx) / tagDt, -4200, 4200) : 0;
-    const vy = Number.isFinite(prevCy) ? clamp((Number(tag.cy) - prevCy) / tagDt, -4200, 4200) : 0;
-    lastTagSampleAt = tagSeenAt;
-    lastTag = {
-      x: tag.x,
-      y: tag.y,
-      w: tag.w,
-      h: tag.h,
-      cx: tag.cx,
-      cy: tag.cy,
-      side: tag.side,
-      vx,
-      vy,
-    };
+    lastTag = tag;
+    
     if (renderUi) {
       if (selectedTagId !== null) setText(tagIdEl, selectedTagId);
       setText(targetStateEl, `rilevato AprilTag ID ${tag.id}${tag.dictionary ? ` | ${tag.dictionary}` : ''}`);
@@ -677,6 +684,11 @@
       const actualHz = pid.lastLoopMs ? `${(1000 / pid.lastLoopMs).toFixed(1)} Hz` : '-';
       setText(precisionEl, detectionPrecision(tag, cmd, perf));
       setText(perfEl, `det ${perf.detect_ms ?? '-'} ms | frame ${perf.frame_age_ms ?? '-'} ms | loop ${actualHz}`);
+      setText(commandEl, `linear=${cmd.linear ?? 0} angular=${cmd.angular ?? 0} | ${cmd.mode ?? ''}`);
+      setText(curveModeEl, cmd.mode ?? 'spenta');
+      if (data.rosbridge_connected !== undefined) {
+        setText(rosStateEl, data.rosbridge_connected ? 'joystick attivo (backend)' : 'ROSBridge backend sconnesso');
+      }
     }
     return cmd;
   }
@@ -853,7 +865,11 @@
         selectedTagDictionary = data.acquired_tag_dictionary || data.tag?.dictionary || selectedTagDictionary;
         setText(tagIdEl, selectedTagId);
       }
+      const isNewFrame = !data.perf?.frame_id || Number(data.perf.frame_id) !== lastBackendFrameId;
       if (data.perf?.frame_id) lastBackendFrameId = Number(data.perf.frame_id) || lastBackendFrameId;
+      if (!isNewFrame) {
+        return null;
+      }
       const cmd = updateStats(data, renderUi);
       updateProfiler(data, fetchMs, renderUi);
       return cmd;
@@ -914,16 +930,32 @@
         return;
       }
     }
-    const ok = await ensureRosBridge();
-    if (!ok) {
-      setText(followStateEl, 'ROSBridge non pronto');
+    
+    try {
+      setText(followStateEl, 'avvio tracciamento backend...');
+      const res = await fetch('/api/tracking/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_id: selectedTagId,
+          target_dictionary: selectedTagDictionary || 'APRILTAG_25h9'
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data.ok) {
+        setText(followStateEl, `errore avvio backend: ${data.message || 'unknown'}`);
+        return;
+      }
+    } catch (err) {
+      setText(followStateEl, `errore connessione backend: ${err}`);
       return;
     }
+    
     followEnabled = true;
     pid = resetPid();
     lastBackendFrameId = 0;
     lastSeenAt = performance.now();
-    setText(followStateEl, `PID attivo su AprilTag ID ${selectedTagId}`);
+    setText(followStateEl, `PID attivo sul backend (AprilTag ID ${selectedTagId})`);
     followLoop();
   }
 
@@ -932,27 +964,19 @@
     const started = performance.now();
     if (pid.lastLoopAt) pid.lastLoopMs = started - pid.lastLoopAt;
     pid.lastLoopAt = started;
-    const cmd = await tagStep(false);
-    if (followEnabled && cmd) {
-      const out = computePid(cmd);
-      const sent = publishVelocity(out.linear, out.angular, out.mode);
-      if (!sent && performance.now() > rosReconnectAt) {
-        rosReconnectAt = performance.now() + 1200;
-        ensureRosBridge();
-      }
-    } else if (followEnabled && (!socket || socket.readyState !== WebSocket.OPEN || !joystickToken) && performance.now() > rosReconnectAt) {
-      rosReconnectAt = performance.now() + 1200;
-      ensureRosBridge();
-    }
+    
+    await tagStep(false);
+    
     const elapsed = performance.now() - started;
-    const targetMs = 1000 / Math.max(1, Math.min(180, number(pidHzInput, 160)));
-    followTimer = window.setTimeout(followLoop, Math.max(0, targetMs - elapsed));
+    followTimer = window.setTimeout(followLoop, Math.max(0, 100 - elapsed));
   }
 
-  function stopFollow() {
+  async function stopFollow() {
     followEnabled = false;
     window.clearTimeout(followTimer);
-    stopRobot();
+    try {
+      await fetch('/api/tracking/stop', { method: 'POST' });
+    } catch (_) {}
     setText(followStateEl, 'spento');
   }
 
@@ -1024,6 +1048,15 @@
   maxAngularInput?.addEventListener('input', () => saveTrackingSettings(false));
   pidHzInput?.addEventListener('input', () => saveTrackingSettings(false));
   detectWidthInput?.addEventListener('input', () => saveTrackingSettings(false));
+  contrastInput?.addEventListener('input', updateImageLabels);
+  brightnessInput?.addEventListener('input', updateImageLabels);
+  claheInput?.addEventListener('input', updateImageLabels);
+  pidInputs.linearKp?.addEventListener('input', () => saveTrackingSettings(false));
+  pidInputs.linearKi?.addEventListener('input', () => saveTrackingSettings(false));
+  pidInputs.linearKd?.addEventListener('input', () => saveTrackingSettings(false));
+  pidInputs.angularKp?.addEventListener('input', () => saveTrackingSettings(false));
+  pidInputs.angularKi?.addEventListener('input', () => saveTrackingSettings(false));
+  pidInputs.angularKd?.addEventListener('input', () => saveTrackingSettings(false));
   saveSettingsBtn?.addEventListener('click', () => saveTrackingSettings(true));
   document.querySelectorAll('.tracking-preset').forEach((button) => {
     button.addEventListener('click', () => applyPreset(button));
@@ -1031,6 +1064,7 @@
   loadTrackingSettings().finally(() => {
     updatePresetActiveState();
     updateTargetSizeLabel();
+    updateImageLabels();
     startStatusPolling();
   });
   setText(followStateEl, 'pronto');

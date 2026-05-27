@@ -138,7 +138,41 @@
 
   <!-- RIGHT COLUMN: PID Settings -->
   <aside class="tracking-console">
-    <section class="card tracking-panel" style="height: 100%;">
+    <!-- Image Preprocessing Panel -->
+    <section class="card tracking-panel" style="margin-bottom: 24px;">
+      <h2>Pre-elaborazione Immagine</h2>
+      <div class="stack" style="display: flex; flex-direction: column; gap: 20px; margin-top: 16px;">
+        <div>
+          <label>Contrasto Immagine (Alpha)
+            <input id="trackingContrast" type="range" min="1.0" max="3.0" step="0.1" value="1.0" style="width: 100%; margin-top: 8px;">
+          </label>
+          <div class="row" style="display: flex; justify-content: space-between; margin-top: 8px;">
+            <span style="font-size: 0.85rem; color: var(--text-secondary);">Moltiplicatore contrasto (default: 1.0)</span>
+            <strong id="trackingContrastValue" class="mono" style="color: var(--accent-primary);">1.0</strong>
+          </div>
+        </div>
+        <div>
+          <label>Luminosità (Beta)
+            <input id="trackingBrightness" type="range" min="0" max="100" step="1" value="0" style="width: 100%; margin-top: 8px;">
+          </label>
+          <div class="row" style="display: flex; justify-content: space-between; margin-top: 8px;">
+            <span style="font-size: 0.85rem; color: var(--text-secondary);">Incremento luminosità (default: 0)</span>
+            <strong id="trackingBrightnessValue" class="mono" style="color: var(--accent-primary);">0</strong>
+          </div>
+        </div>
+        <div>
+          <label>Filtro Adattivo CLAHE
+            <input id="trackingClahe" type="range" min="0.0" max="5.0" step="0.5" value="2.0" style="width: 100%; margin-top: 8px;">
+          </label>
+          <div class="row" style="display: flex; justify-content: space-between; margin-top: 8px;">
+            <span style="font-size: 0.85rem; color: var(--text-secondary);">Soglia clip limit (0.0 = disattivato)</span>
+            <strong id="trackingClaheValue" class="mono" style="color: var(--accent-primary);">2.0</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card tracking-panel">
       <h2>Parametri Regolazione PID</h2>
       <div class="stack" style="display: flex; flex-direction: column; gap: 24px; margin-top: 16px;">
         
